@@ -1,7 +1,14 @@
+import { toast } from "sonner";
 import { usePlayerName } from "../state management/states";
 
 function LandingPage() {
   const { playerName, setPlayerName } = usePlayerName();
+
+  const handleHost = () => {
+    if (!playerName.trim()) {
+      toast.error("Name is required!");
+    }
+  };
 
   return (
     <div className="min-h-full flex items-center justify-center bg-linear-to-br from-slate-800 via-teal-900 to-slate-900 relative overflow-hidden">
@@ -40,10 +47,13 @@ function LandingPage() {
 
         {/* Buttons */}
         <div className="flex gap-4 mb-8">
-          <button className="flex-1 py-4 bg-linear-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white font-bold text-xl rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl">
+          <button
+            className="flex-1 py-4 bg-linear-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white font-bold text-xl rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl cursor-pointer"
+            onClick={handleHost}
+          >
             HOST
           </button>
-          <button className="flex-1 py-4 bg-linear-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold text-xl rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl">
+          <button className="flex-1 py-4 bg-linear-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold text-xl rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl cursor-pointer">
             JOIN
           </button>
         </div>

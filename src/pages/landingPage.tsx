@@ -1,4 +1,8 @@
+import { usePlayerName } from "../state management/states";
+
 function LandingPage() {
+  const { playerName, setPlayerName } = usePlayerName();
+
   return (
     <div className="min-h-full flex items-center justify-center bg-linear-to-br from-slate-800 via-teal-900 to-slate-900 relative overflow-hidden">
       {/* Decorative background pattern */}
@@ -25,6 +29,10 @@ function LandingPage() {
         <div className="mb-6">
           <input
             type="text"
+            value={playerName}
+            onChange={(event) => {
+              setPlayerName(event.target.value.trim());
+            }}
             placeholder="Enter your username"
             className="w-full px-6 py-4 bg-slate-800/70 border-2 border-teal-400 rounded-full text-white placeholder-gray-400 text-lg focus:outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-400/50"
           />

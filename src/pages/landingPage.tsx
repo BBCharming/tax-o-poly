@@ -1,7 +1,9 @@
 import { toast } from "sonner";
 import { usePlayerName } from "../state management/states";
+import { useNavigate } from "react-router";
 
 function LandingPage() {
+  const navigate = useNavigate();
   const { playerName, setPlayerName } = usePlayerName();
 
   const handleHost = () => {
@@ -53,7 +55,16 @@ function LandingPage() {
           >
             HOST
           </button>
-          <button className="flex-1 py-4 bg-linear-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold text-xl rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl cursor-pointer">
+          <button
+            className="flex-1 py-4 bg-linear-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold text-xl rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl cursor-pointer"
+            onClick={() => {
+              if (!playerName.trim()) {
+                toast.error("Name is required!");
+              } else {
+                navigate("/join");
+              }
+            }}
+          >
             JOIN
           </button>
         </div>

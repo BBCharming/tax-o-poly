@@ -1,4 +1,16 @@
+import { toast } from "sonner";
+import { useGame } from "../state management/states";
+import { useNavigate } from "react-router";
+
 function JoinPage() {
+  const navigate = useNavigate();
+  const { roomCode, setRoomCode } = useGame();
+
+  const handleJoin = () => {
+    if (!roomCode.trim()) {
+      toast.error("Room Code Cannot Be Empty!");
+    }
+  };
   return (
     <div className="size-full flex items-center justify-center bg-linear-to-br from-slate-800 via-teal-900 to-slate-900 relative overflow-hidden">
       {/* Decorative background pattern */}
@@ -26,18 +38,30 @@ function JoinPage() {
           </label>
           <input
             type="text"
+            value={roomCode}
+            onChange={(event) => {
+              setRoomCode(event.target.value);
+            }}
             placeholder="TX-1234"
             className="w-full px-6 py-4 bg-slate-800/70 border-2 border-teal-400 rounded-lg text-white placeholder-gray-400 text-lg focus:outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-400/50 text-center font-mono tracking-wider"
           />
         </div>
 
         {/* Join button */}
-        <button className="w-full py-4 bg-linear-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold text-xl rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl mb-6">
+        <button
+          className="w-full py-4 bg-linear-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold text-xl rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl mb-6 cursor-pointer"
+          onClick={handleJoin}
+        >
           JOIN
         </button>
 
         {/* Back button */}
-        <button className="w-full py-3 text-teal-300 hover:text-teal-200 transition-colors">
+        <button
+          className="w-full py-3 text-teal-300 hover:text-teal-200 transition-colors cursor-pointer"
+          onClick={() => {
+            navigate("/");
+          }}
+        >
           ← Back to Login
         </button>
       </div>

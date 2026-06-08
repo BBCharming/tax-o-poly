@@ -5,6 +5,7 @@ import { BrowserRouter, Route, Routes } from "react-router";
 import LandingPage from "./pages/landingPage.tsx";
 import JoinPage from "./pages/joinPage.tsx";
 import { Toaster } from "sonner";
+import GameLobby from "./pages/gameLobby.tsx";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -13,6 +14,7 @@ createRoot(document.getElementById("root")!).render(
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/join" element={<JoinPage />} />
+        <Route path="/lobby" element={<GameLobby />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

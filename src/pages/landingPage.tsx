@@ -1,15 +1,23 @@
 import { toast } from "sonner";
-import { usePlayerName } from "../state management/states";
+import { useGame, usePlayer } from "../state management/states";
 import { useNavigate } from "react-router";
 
 function LandingPage() {
   const navigate = useNavigate();
-  const { playerName, setPlayerName } = usePlayerName();
+  const { name, setName, setIsHost } = usePlayer();
+  const { setRoomCode } = useGame();
 
   const handleHost = () => {
-    if (!playerName.trim()) {
+    if (!name.trim()) {
       toast.error("Name is required!");
+      return;
     }
+    const codeNumber = Math.floor(Math.random() * 9000) + 1000;
+    const gameCode = `TAXOPOLY-${codeNumber}`;
+    setRoomCode(gameCode);
+    setIsHost(true);
+
+    navigate("/lobby");
   };
 
   return (
@@ -38,9 +46,9 @@ function LandingPage() {
         <div className="mb-6">
           <input
             type="text"
-            value={playerName}
+            value={name}
             onChange={(event) => {
-              setPlayerName(event.target.value.trim());
+              setName(event.target.value.trim().toLocaleUpperCase());
             }}
             placeholder="Enter your username"
             className="w-full px-6 py-4 bg-slate-800/70 border-2 border-teal-400 rounded-full text-white placeholder-gray-400 text-lg focus:outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-400/50"
@@ -58,7 +66,7 @@ function LandingPage() {
           <button
             className="flex-1 py-4 bg-linear-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold text-xl rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl cursor-pointer"
             onClick={() => {
-              if (!playerName.trim()) {
+              if (!name.trim()) {
                 toast.error("Name is required!");
               } else {
                 navigate("/join");

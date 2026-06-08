@@ -1,8 +1,12 @@
 import { create } from "zustand";
 
-interface playerName {
-  playerName: string;
-  setPlayerName: (name: string) => void;
+interface player {
+  ID: number;
+  setID: (id: number) => void;
+  name: string;
+  setName: (name: string) => void;
+  isHost: boolean;
+  setIsHost: (host: boolean) => void;
 }
 
 interface game {
@@ -10,9 +14,13 @@ interface game {
   setRoomCode: (code: string) => void;
 }
 
-export const usePlayerName = create<playerName>((set) => ({
-  playerName: "",
-  setPlayerName: (name: string) => set({ playerName: name }),
+export const usePlayer = create<player>((set) => ({
+  ID: 0,
+  setID: (id: number) => set({ ID: id }),
+  name: "",
+  setName: (name: string) => set({ name: name }),
+  isHost: false,
+  setIsHost: (host: boolean) => set({ isHost: host }),
 }));
 
 export const useGame = create<game>((set) => ({

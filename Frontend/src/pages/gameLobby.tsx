@@ -112,6 +112,9 @@ const GameLobby = () => {
             onClick={handleStartGame}
             className="w-full py-4 bg-linear-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold text-xl rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={players.length < 2}
+            onClickCapture={() => {
+              navigate(`/${roomCode}/board`);
+            }}
           >
             START GAME{" "}
             {players.length < 2 && `(Need ${2 - players.length} more)`}

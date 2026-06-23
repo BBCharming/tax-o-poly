@@ -1,7 +1,10 @@
 import { io } from "socket.io-client";
 
-const SOCKET_URL = "http://localhost:3001"; // Your backend server URL
-export const socket = io(SOCKET_URL);
+const SOCKET_URL = "http://localhost:3001";
+export const socket = io(SOCKET_URL, {
+  autoConnect: true,
+  reconnection: true,
+});
 
 export const joinGameRoom = (
   roomCode: string,
@@ -19,4 +22,14 @@ export const createGameRoom = (
 
 export const startGame = (roomCode: string) => {
   socket.emit("start-game", { roomCode });
+};
+
+export const rollDice = (
+  roomCode: string,
+  playerId: string,
+  dice1: number,
+  dice2: number,
+  newPosition: number,
+) => {
+  socket.emit("roll-dice", { roomCode, playerId, dice1, dice2, newPosition });
 };

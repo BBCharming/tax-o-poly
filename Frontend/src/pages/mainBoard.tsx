@@ -1,13 +1,29 @@
+import { useEffect, useState } from "react";
+import { useGame, usePlayer } from "../services/states";
+import { playerColors, playerTokens } from "../services/playerConfigs";
+import { socket } from "../services/socket";
+
 export default function GameBoard() {
-  // Corners
+  const {
+    players,
+    currentTurn,
+    currentDiceRoll,
+    setCurrentDiceRoll,
+    setCurrentTurn,
+    roomCode,
+  } = useGame();
+  const { ID, name, position, setPosition } = usePlayer();
+  const [isRolling, setIsRolling] = useState(false);
+
+  // Corners - GO is at topRight (position 10)
   const corners = {
-    topLeft: { name: "Free Parking", color: "gray" },
-    topRight: { name: "GO →", color: "gray" },
-    bottomLeft: { name: "Audit Lock!", color: "red" },
-    bottomRight: { name: "Tax Office", color: "gray" },
+    topLeft: { name: "GO", color: "gray" },
+    topRight: { name: "Free Parking", color: "gray" },
+    bottomLeft: { name: "Tax Office", color: "gray" },
+    bottomRight: { name: "Audit Lock!", color: "red" },
   };
 
-  // Top row (left to right, excluding corners)
+  // Top row (left to right, excluding corners) - positions 1-9
   const topSpaces = [
     { name: "Airport", price: "K260", color: "blue" },
     { name: "Civic Risk", color: "orange" },
@@ -19,7 +35,7 @@ export default function GameBoard() {
     { name: "Stadium", price: "K160", color: "green" },
   ];
 
-  // Right column (top to bottom, excluding corners)
+  // Right column (top to bottom, excluding corners) - positions 11-19
   const rightSpaces = [
     { name: "Clinic", price: "K120", color: "blue" },
     { name: "School", price: "K160", color: "green" },
@@ -31,7 +47,7 @@ export default function GameBoard() {
     { name: "Port", price: "K240", color: "blue" },
   ];
 
-  // Bottom row (right to left, excluding corners)
+  // Bottom row (right to left, excluding corners) - positions 21-29
   const bottomSpaces = [
     { name: "Sewer", price: "K100", color: "teal" },
     { name: "Park", price: "K140", color: "green" },
@@ -43,7 +59,7 @@ export default function GameBoard() {
     { name: "Bridge", price: "K220", color: "blue" },
   ];
 
-  // Left column (bottom to top, excluding corners)
+  // Left column (bottom to top, excluding corners) - positions 31-39
   const leftSpaces = [
     { name: "Police", price: "K120", color: "teal" },
     { name: "Water", price: "K175", color: "teal" },
@@ -55,6 +71,7 @@ export default function GameBoard() {
     { name: "Free Pass", color: "gray" },
   ];
 
+  // Get space colors
   const getSpaceColors = (color: string) => {
     switch (color) {
       case "teal":
@@ -124,10 +141,92 @@ export default function GameBoard() {
     }
   };
 
+  useEffect(() => {
+    // Listen for dice roll events
+    socket.on("dice-rolled", ({ playerId, dice1, dice2, newPosition }) => {
+      if (playerId === ID) {
+        setPosition(newPosition);
+      }
+      setCurrentDiceRoll([dice1, dice2]);
+      setIsRolling(false);
+    });
+
+    socket.on("turn-changed", ({ playerId }) => {
+      setCurrentTurn(playerId);
+    });
+
+    socket.on("player-moved", ({ playerId, newPosition }) => {
+      const updatedPlayers = players.map((p) =>
+        p.ID === playerId ? { ...p, position: newPosition } : p,
+      );
+      // You'll need to sync this with server
+    });
+
+    return () => {
+      socket.off("dice-rolled");
+      socket.off("turn-changed");
+      socket.off("player-moved");
+    };
+  }, [ID, setPosition, setCurrentDiceRoll, setCurrentTurn, players]);
+
+  const handleRollDice = () => {
+    if (isRolling || currentTurn !== ID) return;
+
+    setIsRolling(true);
+    const dice1 = Math.floor(Math.random() * 6) + 1;
+    const dice2 = Math.floor(Math.random() * 6) + 1;
+    const total = dice1 + dice2;
+    const newPosition = (position + total) % 40;
+
+    socket.emit("roll-dice", {
+      roomCode: roomCode,
+      playerId: ID,
+      dice1,
+      dice2,
+      newPosition,
+    });
+  };
+
+  // Get player style using their assigned token
+  const getPlayerStyle = (player: any) => {
+    // Find the player's token in the playerTokens array
+    const tokenIndex = playerTokens.indexOf(player.token);
+    const colorIndex = tokenIndex >= 0 ? tokenIndex : 0;
+    const color = playerColors[colorIndex % playerColors.length];
+    return { ...color, token: player.token || playerTokens[0] };
+  };
+
+  const renderPlayerTokens = (spaceIndex: number) => {
+    const playersOnSpace = players.filter((p) => p.position === spaceIndex);
+
+    return playersOnSpace.map((player, idx) => {
+      const style = getPlayerStyle(player);
+      const isCurrentPlayer = player.ID === ID;
+
+      return (
+        <div
+          key={player.ID}
+          className={`absolute ${style.bg} ${style.border} border-2 rounded-full w-6 h-6 flex items-center justify-center text-white text-xs font-bold transition-all duration-300`}
+          style={{
+            bottom: `${idx * 18 + 2}px`,
+            right: `${idx * 18 + 2}px`,
+            zIndex: isCurrentPlayer ? 10 : 5,
+            transform: isCurrentPlayer ? "scale(1.2)" : "scale(1)",
+            boxShadow: isCurrentPlayer
+              ? "0 0 10px rgba(255,255,0,0.5)"
+              : "none",
+          }}
+        >
+          <span className="text-xs">{style.token}</span>
+        </div>
+      );
+    });
+  };
+
   const renderSpace = (
     space: any,
+    spaceIndex: number = -1,
     isCorner = false,
-    rotation = "",
     isSide = false,
   ) => {
     const colors = getSpaceColors(space.color);
@@ -135,19 +234,20 @@ export default function GameBoard() {
     if (isCorner) {
       return (
         <div
-          className={`${colors.bg} ${colors.border} border-2 flex items-center justify-center shrink-0`}
+          className={`${colors.bg} ${colors.border} border-2 flex items-center justify-center shrink-0 relative`}
           style={{ width: "120px", height: "120px" }}
         >
           <div className={`${colors.text} font-bold text-center px-2 text-sm`}>
             {space.name}
           </div>
+          {spaceIndex >= 0 && renderPlayerTokens(spaceIndex)}
         </div>
       );
     }
 
     return (
       <div
-        className={`bg-white border border-gray-300 flex flex-col shrink-0 ${isSide ? "" : "w-full"}`}
+        className={`bg-white border border-gray-300 flex flex-col shrink-0 relative ${isSide ? "" : "w-full"}`}
         style={{
           width: isSide ? "80px" : undefined,
           height: "120px",
@@ -168,16 +268,20 @@ export default function GameBoard() {
             </div>
           )}
         </div>
+        {spaceIndex >= 0 && renderPlayerTokens(spaceIndex)}
       </div>
     );
   };
 
+  const currentPlayerName =
+    players.find((p) => p.ID === currentTurn)?.name || "Waiting...";
+
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-800 via-teal-900 to-slate-900 p-6 flex items-center justify-center">
-      <div className="relative w-full max-w-260">
-        {/* Top Bar: Treasury + QLI - positioned above board */}
+    <div className="min-h-screen bg-linear-to-br from-slate-800 via-teal-900 to-slate-900 p-4 flex items-center justify-center">
+      <div className="relative w-full max-w-6xl">
+        {/* Top Bar */}
         <div className="bg-[rgb(8,80,65)] rounded-t-xl px-6 py-3 mb-2">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-4">
               <span className="text-[rgb(250,249,245)] font-medium text-sm">
                 Public treasury
@@ -186,6 +290,16 @@ export default function GameBoard() {
                 K 4,250
               </span>
             </div>
+
+            <div className="flex items-center gap-4">
+              <span className="text-[rgb(250,249,245)] font-medium text-sm">
+                Current Turn:
+              </span>
+              <span className="text-amber-300 font-bold">
+                {currentPlayerName}
+              </span>
+            </div>
+
             <div className="flex items-center gap-4">
               <span className="text-[rgb(250,249,245)] font-medium text-sm">
                 Quality-of-Life Index
@@ -200,114 +314,171 @@ export default function GameBoard() {
           </div>
         </div>
 
-        {/* Main Board */}
-        <div className="bg-teal-100 border-8 border-gray-800 shadow-2xl">
-          {/* Board Grid */}
-          <div className="w-full flex flex-col">
-            {/* Top Row */}
-            <div className="flex w-full">
-              {/* Top Left Corner */}
-              {renderSpace(corners.topLeft, true)}
-              {/* Top Spaces */}
+        {/* Main Board with Side Panel */}
+        <div className="flex gap-4">
+          {/* Game Board */}
+          <div className="flex-1 bg-teal-100 border-8 border-gray-800 shadow-2xl">
+            <div className="w-full flex flex-col">
+              {/* Top Row */}
+              <div className="flex w-full">
+                {renderSpace(corners.topLeft, 0, true)}
+                <div className="flex flex-1">
+                  {topSpaces.map((space, idx) => (
+                    <div key={idx} className="flex-1">
+                      {renderSpace(space, idx + 1)}
+                    </div>
+                  ))}
+                </div>
+                {renderSpace(corners.topRight, 10, true)}
+              </div>
+
+              {/* Middle Section */}
               <div className="flex flex-1">
-                {topSpaces.map((space, idx) => (
-                  <div key={idx} className="flex-1">
-                    {renderSpace(space)}
-                  </div>
-                ))}
-              </div>
-              {/* Top Right Corner */}
-              {renderSpace(corners.topRight, true)}
-            </div>
-
-            {/* Middle Section */}
-            <div className="flex flex-1">
-              {/* Left Column */}
-              <div
-                className="flex flex-col shrink-0"
-                style={{ width: "120px" }}
-              >
-                {leftSpaces.map((space, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-center"
-                    style={{ height: "80px" }}
-                  >
-                    <div className="transform -rotate-90 origin-center">
-                      {renderSpace(space, false, "", true)}
+                {/* Left Column */}
+                <div
+                  className="flex flex-col shrink-0"
+                  style={{ width: "120px" }}
+                >
+                  {leftSpaces.map((space, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-center"
+                      style={{ height: "80px" }}
+                    >
+                      <div className="transform -rotate-90 origin-center">
+                        {renderSpace(space, 39 - idx, false, true)}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Center Area */}
-              <div className="flex-1 bg-teal-50 flex flex-col items-center justify-center p-8">
-                {/* Logo/Title */}
-                <div className="bg-linear-to-r from-red-600 to-red-700 px-12 py-6 rounded-xl shadow-xl mb-8 border-4 border-white">
-                  <h1 className="text-6xl font-black text-white tracking-wider text-center">
-                    TAX-OPOLY
-                  </h1>
-                  <p className="text-white text-center text-lg font-semibold mt-2">
-                    The Public Good Game
-                  </p>
+                  ))}
                 </div>
 
-                {/* Player Info */}
-                <div className="bg-white/80 rounded-xl p-6 shadow-lg mb-6">
-                  <p className="text-gray-800 font-semibold text-center mb-4">
-                    Turn 7 · Isaac's turn
-                  </p>
-                </div>
+                {/* Center Area - Now with side-by-side layout */}
+                <div className="flex-1 bg-teal-50 flex flex-col items-center justify-center p-8">
+                  {/* Logo/Title - Big on top */}
+                  <div className="bg-linear-to-r from-red-600 to-red-700 px-12 py-6 rounded-xl shadow-xl mb-6 border-4 border-white">
+                    <h1 className="text-6xl font-black text-white tracking-wider text-center">
+                      TAX-OPOLY
+                    </h1>
+                    <p className="text-white text-center text-lg font-semibold mt-2">
+                      The Public Good Game
+                    </p>
+                  </div>
 
-                {/* Dice Controls */}
-                <div className="flex gap-4">
-                  <button className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-8 py-3 rounded-lg shadow-lg transition-colors">
-                    🎲 ROLL DICE
-                  </button>
-                  <div className="bg-amber-500 px-6 py-3 rounded-lg shadow-lg border-2 border-amber-600">
-                    <div className="text-white text-xs text-center font-semibold">
-                      Last roll
+                  {/* Position indicator */}
+                  <div className="text-sm text-gray-600 bg-white/80 px-4 py-2 rounded-lg mb-4">
+                    Your position: {position}
+                  </div>
+
+                  {/* Players + Dice Controls - Side by side */}
+                  <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Left: Player Info */}
+                    <div className="bg-white/80 rounded-xl p-6 shadow-lg">
+                      <h3 className="text-gray-800 font-semibold text-center mb-4">
+                        Players in Game
+                      </h3>
+                      <div className="space-y-2">
+                        {players.map((player, index) => {
+                          const style = getPlayerStyle(player);
+                          const isCurrentPlayer = player.ID === ID;
+                          const isTurn = player.ID === currentTurn;
+
+                          return (
+                            <div
+                              key={player.ID}
+                              className={`flex items-center justify-between px-4 py-2 rounded-lg ${
+                                isCurrentPlayer
+                                  ? "bg-blue-50 border-2 border-blue-300"
+                                  : "bg-gray-50"
+                              } ${isTurn ? "ring-2 ring-amber-400" : ""}`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className={`${style.bg} rounded-full w-8 h-8 flex items-center justify-center text-white`}
+                                >
+                                  <span className="text-sm">{style.token}</span>
+                                </div>
+                                <span className="font-medium text-gray-800">
+                                  {player.name}
+                                  {isCurrentPlayer && " (You)"}
+                                  {player.isHost && " 👑"}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {isTurn && (
+                                  <span className="text-xs bg-amber-400 text-white px-2 py-1 rounded-full">
+                                    Turn
+                                  </span>
+                                )}
+                                <span className="text-sm text-gray-600">
+                                  K {player.money || 1500}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div className="text-white font-bold text-lg text-center">
-                      3 + 4
+
+                    {/* Right: Dice Controls */}
+                    <div className="flex flex-col items-center justify-center bg-white/80 rounded-xl p-6 shadow-lg">
+                      <div className="flex gap-4">
+                        <button
+                          onClick={handleRollDice}
+                          disabled={isRolling || currentTurn !== ID}
+                          className={`bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-8 py-3 rounded-lg shadow-lg transition-colors ${
+                            isRolling || currentTurn !== ID
+                              ? "opacity-50 cursor-not-allowed"
+                              : ""
+                          }`}
+                        >
+                          {isRolling ? "🎲 Rolling..." : "🎲 ROLL DICE"}
+                        </button>
+                        {currentDiceRoll.length > 0 && (
+                          <div className="bg-amber-500 px-6 py-3 rounded-lg shadow-lg border-2 border-amber-600">
+                            <div className="text-white text-xs text-center font-semibold">
+                              Last roll
+                            </div>
+                            <div className="text-white font-bold text-lg text-center">
+                              {currentDiceRoll[0]} + {currentDiceRoll[1]}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Right Column */}
-              <div
-                className="flex flex-col shrink-0"
-                style={{ width: "120px" }}
-              >
-                {rightSpaces.map((space, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-center"
-                    style={{ height: "80px" }}
-                  >
-                    <div className="transform rotate-90 origin-center">
-                      {renderSpace(space, false, "", true)}
+                {/* Right Column */}
+                <div
+                  className="flex flex-col shrink-0"
+                  style={{ width: "120px" }}
+                >
+                  {rightSpaces.map((space, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-center"
+                      style={{ height: "80px" }}
+                    >
+                      <div className="transform rotate-90 origin-center">
+                        {renderSpace(space, 20 + idx, false, true)}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
 
-            {/* Bottom Row */}
-            <div className="flex w-full">
-              {/* Bottom Left Corner */}
-              {renderSpace(corners.bottomLeft, true)}
-              {/* Bottom Spaces */}
-              <div className="flex flex-1">
-                {bottomSpaces.map((space, idx) => (
-                  <div key={idx} className="flex-1">
-                    {renderSpace(space)}
-                  </div>
-                ))}
+              {/* Bottom Row */}
+              <div className="flex w-full">
+                {renderSpace(corners.bottomLeft, 30, true)}
+                <div className="flex flex-1">
+                  {bottomSpaces.map((space, idx) => (
+                    <div key={idx} className="flex-1">
+                      {renderSpace(space, 29 - idx)}
+                    </div>
+                  ))}
+                </div>
+                {renderSpace(corners.bottomRight, 20, true)}
               </div>
-              {/* Bottom Right Corner */}
-              {renderSpace(corners.bottomRight, true)}
             </div>
           </div>
         </div>

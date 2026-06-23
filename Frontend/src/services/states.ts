@@ -1,5 +1,15 @@
 import { create } from "zustand";
 
+export interface Player {
+  ID: string;
+  name: string;
+  isHost: boolean;
+  position: number;
+  money: number;
+  token: string;
+  color: string;
+}
+
 interface player {
   ID: string;
   setID: (id: string) => void;
@@ -7,17 +17,23 @@ interface player {
   setName: (name: string) => void;
   isHost: boolean;
   setIsHost: (host: boolean) => void;
+  position: number;
+  setPosition: (position: number) => void;
+  money: number;
+  setMoney: (money: number) => void;
 }
 
 interface game {
   roomCode: string;
   setRoomCode: (code: string) => void;
-  players: Array<{ ID: string; name: string; isHost: boolean }>;
-  setPlayers: (
-    players: Array<{ ID: string; name: string; isHost: boolean }>,
-  ) => void;
+  players: Player[];
+  setPlayers: (players: Player[]) => void;
   isGameStarted: boolean;
   setIsGameStarted: (started: boolean) => void;
+  currentTurn: string;
+  setCurrentTurn: (playerId: string) => void;
+  currentDiceRoll: number[];
+  setCurrentDiceRoll: (roll: number[]) => void;
 }
 
 export const usePlayer = create<player>((set) => ({
@@ -27,6 +43,10 @@ export const usePlayer = create<player>((set) => ({
   setName: (name: string) => set({ name: name }),
   isHost: false,
   setIsHost: (host: boolean) => set({ isHost: host }),
+  position: 0,
+  setPosition: (position: number) => set({ position }),
+  money: 1500,
+  setMoney: (money: number) => set({ money }),
 }));
 
 export const useGame = create<game>((set) => ({
@@ -36,4 +56,8 @@ export const useGame = create<game>((set) => ({
   setPlayers: (players) => set({ players }),
   isGameStarted: false,
   setIsGameStarted: (started) => set({ isGameStarted: started }),
+  currentTurn: "",
+  setCurrentTurn: (playerId) => set({ currentTurn: playerId }),
+  currentDiceRoll: [],
+  setCurrentDiceRoll: (roll) => set({ currentDiceRoll: roll }),
 }));

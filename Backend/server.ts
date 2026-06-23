@@ -11,6 +11,17 @@ const io = new Server(server, {
   },
 });
 
+// Player tokens and colors for assignment
+const PLAYER_TOKENS = ["🐻", "🚀", "🐱", "🐶", "🤖", "🦁"];
+const PLAYER_COLORS = [
+  "bg-red-500",
+  "bg-blue-500",
+  "bg-green-500",
+  "bg-yellow-500",
+  "bg-purple-500",
+  "bg-pink-500",
+];
+
 const games = new Map();
 
 io.on("connection", (socket: any) => {
@@ -33,8 +44,24 @@ io.on("connection", (socket: any) => {
         return;
       }
 
-      const players = [{ id: socket.id, name, isHost: true }];
-      games.set(roomCode, { players, maxPlayers: 6, isGameStarted: false });
+      // Create host player with token and color
+      const hostPlayer = {
+        id: socket.id,
+        name,
+        isHost: true,
+        position: 0,
+        money: 1500,
+        token: PLAYER_TOKENS[0],
+        color: PLAYER_COLORS[0],
+      };
+
+      const players = [hostPlayer];
+      games.set(roomCode, {
+        players,
+        maxPlayers: 6,
+        isGameStarted: false,
+        currentTurn: socket.id, // Host goes first
+      });
 
       socket.join(roomCode);
       socket.emit("game-created", { roomCode, players, playerId: socket.id });
@@ -70,7 +97,18 @@ io.on("connection", (socket: any) => {
         return;
       }
 
-      const newPlayer = { id: socket.id, name, isHost: false };
+      // Assign token and color based on player count
+      const playerIndex = game.players.length;
+      const newPlayer = {
+        id: socket.id,
+        name,
+        isHost: false,
+        position: 0,
+        money: 1500,
+        token: PLAYER_TOKENS[playerIndex % PLAYER_TOKENS.length],
+        color: PLAYER_COLORS[playerIndex % PLAYER_COLORS.length],
+      };
+
       game.players.push(newPlayer);
       games.set(roomCode, game);
 
@@ -93,6 +131,57 @@ io.on("connection", (socket: any) => {
       io.to(roomCode).emit("game-started");
     }
   });
+
+  // Handle dice roll
+  socket.on(
+    "roll-dice",
+    ({
+      roomCode,
+      playerId,
+      dice1,
+      dice2,
+      newPosition,
+    }: {
+      roomCode: string;
+      playerId: string;
+      dice1: number;
+      dice2: number;
+      newPosition: number;
+    }) => {
+      const game = games.get(roomCode);
+
+      if (!game || !game.isGameStarted) return;
+
+      // Update player position
+      const player = game.players.find((p: any) => p.id === playerId);
+      if (player) {
+        player.position = newPosition;
+      }
+
+      // Broadcast dice roll to all players
+      io.to(roomCode).emit("dice-rolled", {
+        playerId,
+        dice1,
+        dice2,
+        newPosition,
+      });
+
+      // Move to next turn
+      const currentIndex = game.players.findIndex(
+        (p: any) => p.id === playerId,
+      );
+      const nextIndex = (currentIndex + 1) % game.players.length;
+      const nextPlayer = game.players[nextIndex];
+      game.currentTurn = nextPlayer.id;
+
+      games.set(roomCode, game);
+
+      // Broadcast turn change
+      io.to(roomCode).emit("turn-changed", {
+        playerId: nextPlayer.id,
+      });
+    },
+  );
 
   // Handle disconnection
   socket.on("disconnect", () => {

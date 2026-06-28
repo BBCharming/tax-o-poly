@@ -554,12 +554,12 @@ export default function GameBoard() {
 
                   {/* Players + Dice Controls - Side by side */}
                   <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Left: Player Info */}
+                    {/* Left: Player Info with max height and scroll */}
                     <div className="bg-white/80 rounded-xl p-6 shadow-lg">
                       <h3 className="text-gray-800 font-semibold text-center mb-4">
                         Players in Game
                       </h3>
-                      <div className="space-y-2">
+                      <div className="space-y-2 max-h-40 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-200">
                         {players.map((player) => {
                           const style = getPlayerStyle(player);
                           const isCurrentPlayer = player.ID === ID;

@@ -20,7 +20,7 @@ const GameLobby = () => {
     socket.on("game-started", () => {
       setIsGameStarted(true);
       toast.success("Game is starting!");
-      //   navigate("/game");
+      navigate(`/${roomCode}/board`);
     });
 
     // Listen if host leaves

@@ -61,6 +61,9 @@ io.on("connection", (socket: any) => {
         maxPlayers: 6,
         isGameStarted: false,
         currentTurn: socket.id, // Host goes first
+        turnNumber: 0, // Track turns
+        maxTurns: 12, // 12 months in a year
+        gameWinner: null, // Track winner
       });
 
       socket.join(roomCode);
@@ -113,11 +116,15 @@ io.on("connection", (socket: any) => {
       games.set(roomCode, game);
 
       socket.join(roomCode);
-      io.to(roomCode).emit("players-updated", game.players);
+
+      // Send the current game state to the new player
       socket.emit("player-joined", {
         players: game.players,
         playerId: socket.id,
       });
+
+      // Broadcast updated player list to everyone
+      io.to(roomCode).emit("players-updated", game.players);
     },
   );
 
@@ -127,8 +134,17 @@ io.on("connection", (socket: any) => {
 
     if (game && !game.isGameStarted) {
       game.isGameStarted = true;
+      game.turnNumber = 0;
+      game.currentTurn = game.players[0].id; // First player goes first
       games.set(roomCode, game);
-      io.to(roomCode).emit("game-started");
+
+      // Send the current turn with the game started event
+      io.to(roomCode).emit("game-started", {
+        currentTurn: game.players[0].id,
+        players: game.players,
+        turnNumber: game.turnNumber,
+        maxTurns: game.maxTurns,
+      });
     }
   });
 
@@ -150,13 +166,41 @@ io.on("connection", (socket: any) => {
     }) => {
       const game = games.get(roomCode);
 
-      if (!game || !game.isGameStarted) return;
+      if (!game || !game.isGameStarted) {
+        console.log("Game not found or not started");
+        return;
+      }
+
+      // Check if game is over (reached max turns)
+      if (game.turnNumber >= game.maxTurns) {
+        io.to(roomCode).emit("game-over", {
+          winner: game.gameWinner,
+          message: "Game Over! All 12 months completed!",
+        });
+        return;
+      }
+
+      // Find the player
+      const playerIndex = game.players.findIndex((p: any) => p.id === playerId);
+      if (playerIndex === -1) {
+        console.log("Player not found");
+        return;
+      }
 
       // Update player position
-      const player = game.players.find((p: any) => p.id === playerId);
-      if (player) {
-        player.position = newPosition;
-      }
+      const player = game.players[playerIndex];
+      const oldPosition = player.position;
+      player.position = newPosition;
+
+      console.log(
+        `Player ${player.name} moved from ${oldPosition} to ${newPosition}`,
+      );
+
+      // Increment turn number
+      game.turnNumber += 1;
+
+      // Save updated game
+      games.set(roomCode, game);
 
       // Broadcast dice roll to all players
       io.to(roomCode).emit("dice-rolled", {
@@ -164,13 +208,31 @@ io.on("connection", (socket: any) => {
         dice1,
         dice2,
         newPosition,
+        turnNumber: game.turnNumber,
+        maxTurns: game.maxTurns,
       });
 
+      // Check if game is over
+      if (game.turnNumber >= game.maxTurns) {
+        // Determine winner (player with most money)
+        let winner = game.players[0];
+        for (const p of game.players) {
+          if (p.money > winner.money) {
+            winner = p;
+          }
+        }
+        game.gameWinner = winner;
+        games.set(roomCode, game);
+
+        io.to(roomCode).emit("game-over", {
+          winner: winner,
+          message: `Game Over! ${winner.name} wins with K${winner.money}!`,
+        });
+        return;
+      }
+
       // Move to next turn
-      const currentIndex = game.players.findIndex(
-        (p: any) => p.id === playerId,
-      );
-      const nextIndex = (currentIndex + 1) % game.players.length;
+      const nextIndex = (playerIndex + 1) % game.players.length;
       const nextPlayer = game.players[nextIndex];
       game.currentTurn = nextPlayer.id;
 
@@ -179,6 +241,8 @@ io.on("connection", (socket: any) => {
       // Broadcast turn change
       io.to(roomCode).emit("turn-changed", {
         playerId: nextPlayer.id,
+        turnNumber: game.turnNumber,
+        maxTurns: game.maxTurns,
       });
     },
   );

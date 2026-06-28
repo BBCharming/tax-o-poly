@@ -34,6 +34,10 @@ interface game {
   setCurrentTurn: (playerId: string) => void;
   currentDiceRoll: number[];
   setCurrentDiceRoll: (roll: number[]) => void;
+  turnNumber: number;
+  setTurnNumber: (turn: number) => void;
+  maxTurns: number;
+  setMaxTurns: (max: number) => void;
 }
 
 export const usePlayer = create<player>((set) => ({
@@ -60,4 +64,8 @@ export const useGame = create<game>((set) => ({
   setCurrentTurn: (playerId) => set({ currentTurn: playerId }),
   currentDiceRoll: [],
   setCurrentDiceRoll: (roll) => set({ currentDiceRoll: roll }),
+  turnNumber: 0,
+  setTurnNumber: (turn) => set({ turnNumber: turn }),
+  maxTurns: 12,
+  setMaxTurns: (max) => set({ maxTurns: max }),
 }));

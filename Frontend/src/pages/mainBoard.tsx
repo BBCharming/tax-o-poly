@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useGame, usePlayer } from "../services/states";
 import { playerColors, playerTokens } from "../services/playerConfigs";
-import { socket } from "../services/socket";
+import { socket, rollDice } from "../services/socket";
 
 export default function GameBoard() {
   const {
@@ -10,12 +10,23 @@ export default function GameBoard() {
     currentDiceRoll,
     setCurrentDiceRoll,
     setCurrentTurn,
+    setPlayers,
     roomCode,
+    isGameStarted,
+    setIsGameStarted,
+    turnNumber,
+    setTurnNumber,
+    maxTurns,
+    setMaxTurns,
   } = useGame();
-  const { ID, name, position, setPosition } = usePlayer();
+  const { ID, position, setPosition } = usePlayer();
   const [isRolling, setIsRolling] = useState(false);
+  const [movingPlayer, setMovingPlayer] = useState<string | null>(null);
+  const [gameOver, setGameOver] = useState<{
+    winner: any;
+    message: string;
+  } | null>(null);
 
-  // Corners - GO is at topRight (position 10)
   const corners = {
     topLeft: { name: "GO", color: "gray" },
     topRight: { name: "Free Parking", color: "gray" },
@@ -23,7 +34,6 @@ export default function GameBoard() {
     bottomRight: { name: "Audit Lock!", color: "red" },
   };
 
-  // Top row (left to right, excluding corners) - positions 1-9
   const topSpaces = [
     { name: "Airport", price: "K260", color: "blue" },
     { name: "Civic Risk", color: "orange" },
@@ -35,7 +45,6 @@ export default function GameBoard() {
     { name: "Stadium", price: "K160", color: "green" },
   ];
 
-  // Right column (top to bottom, excluding corners) - positions 11-19
   const rightSpaces = [
     { name: "Clinic", price: "K120", color: "blue" },
     { name: "School", price: "K160", color: "green" },
@@ -47,7 +56,6 @@ export default function GameBoard() {
     { name: "Port", price: "K240", color: "blue" },
   ];
 
-  // Bottom row (right to left, excluding corners) - positions 21-29
   const bottomSpaces = [
     { name: "Sewer", price: "K100", color: "teal" },
     { name: "Park", price: "K140", color: "green" },
@@ -59,7 +67,6 @@ export default function GameBoard() {
     { name: "Bridge", price: "K220", color: "blue" },
   ];
 
-  // Left column (bottom to top, excluding corners) - positions 31-39
   const leftSpaces = [
     { name: "Police", price: "K120", color: "teal" },
     { name: "Water", price: "K175", color: "teal" },
@@ -142,35 +149,103 @@ export default function GameBoard() {
   };
 
   useEffect(() => {
+    // Listen for game started event
+    socket.on(
+      "game-started",
+      ({
+        currentTurn: turn,
+        players: updatedPlayers,
+        turnNumber,
+        maxTurns,
+      }) => {
+        setPlayers(updatedPlayers);
+        setCurrentTurn(turn);
+        setTurnNumber(turnNumber);
+        setMaxTurns(maxTurns);
+        setIsGameStarted(true);
+      },
+    );
+
     // Listen for dice roll events
-    socket.on("dice-rolled", ({ playerId, dice1, dice2, newPosition }) => {
-      if (playerId === ID) {
-        setPosition(newPosition);
-      }
-      setCurrentDiceRoll([dice1, dice2]);
-      setIsRolling(false);
-    });
+    socket.on(
+      "dice-rolled",
+      ({ playerId, dice1, dice2, newPosition, turnNumber }) => {
+        setMovingPlayer(playerId);
 
-    socket.on("turn-changed", ({ playerId }) => {
+        // Update the player's position in the players list
+        const updatedPlayers = players.map((p) =>
+          p.ID === playerId ? { ...p, position: newPosition } : p,
+        );
+        setPlayers(updatedPlayers);
+
+        // If it's the current player, update their local position
+        if (playerId === ID) {
+          setPosition(newPosition);
+        }
+
+        setCurrentDiceRoll([dice1, dice2]);
+        setTurnNumber(turnNumber);
+        setIsRolling(false);
+
+        // Clear moving state after animation
+        setTimeout(() => setMovingPlayer(null), 600);
+      },
+    );
+
+    socket.on("turn-changed", ({ playerId, turnNumber }) => {
       setCurrentTurn(playerId);
+      setTurnNumber(turnNumber);
     });
 
-    socket.on("player-moved", ({ playerId, newPosition }) => {
-      const updatedPlayers = players.map((p) =>
-        p.ID === playerId ? { ...p, position: newPosition } : p,
-      );
-      // You'll need to sync this with server
+    socket.on("players-updated", (updatedPlayers) => {
+      setPlayers(updatedPlayers);
+      // Update local position if this player is in the list
+      const currentPlayer = updatedPlayers.find((p: any) => p.ID === ID);
+      if (currentPlayer) {
+        setPosition(currentPlayer.position);
+      }
+
+      // If currentTurn is not set and we have players, set the first player as turn
+      if (!currentTurn && updatedPlayers.length > 0 && isGameStarted) {
+        setCurrentTurn(updatedPlayers[0].ID);
+      }
+    });
+
+    // Handle player-joined event
+    socket.on("player-joined", ({ players: updatedPlayers, playerId }) => {
+      setPlayers(updatedPlayers);
+    });
+
+    // Handle game over
+    socket.on("game-over", ({ winner, message }) => {
+      setGameOver({ winner, message });
+      setIsGameStarted(false);
     });
 
     return () => {
+      socket.off("game-started");
       socket.off("dice-rolled");
       socket.off("turn-changed");
-      socket.off("player-moved");
+      socket.off("players-updated");
+      socket.off("player-joined");
+      socket.off("game-over");
     };
-  }, [ID, setPosition, setCurrentDiceRoll, setCurrentTurn, players]);
+  }, [
+    ID,
+    setPosition,
+    setCurrentDiceRoll,
+    setCurrentTurn,
+    players,
+    setPlayers,
+    currentTurn,
+    isGameStarted,
+    setIsGameStarted,
+    setTurnNumber,
+    setMaxTurns,
+  ]);
 
   const handleRollDice = () => {
-    if (isRolling || currentTurn !== ID) return;
+    if (isRolling || currentTurn !== ID || !isGameStarted || gameOver) return;
 
     setIsRolling(true);
     const dice1 = Math.floor(Math.random() * 6) + 1;
@@ -178,13 +253,8 @@ export default function GameBoard() {
     const total = dice1 + dice2;
     const newPosition = (position + total) % 40;
 
-    socket.emit("roll-dice", {
-      roomCode: roomCode,
-      playerId: ID,
-      dice1,
-      dice2,
-      newPosition,
-    });
+    // Use the exported rollDice function
+    rollDice(roomCode, ID, dice1, dice2, newPosition);
   };
 
   // Get player style using their assigned token
@@ -202,19 +272,27 @@ export default function GameBoard() {
     return playersOnSpace.map((player, idx) => {
       const style = getPlayerStyle(player);
       const isCurrentPlayer = player.ID === ID;
+      const isMoving = movingPlayer === player.ID;
 
       return (
         <div
           key={player.ID}
-          className={`absolute ${style.bg} ${style.border} border-2 rounded-full w-6 h-6 flex items-center justify-center text-white text-xs font-bold transition-all duration-300`}
+          className={`absolute ${style.bg} ${style.border} border-2 rounded-full w-6 h-6 flex items-center justify-center text-white text-xs font-bold transition-all duration-500 ease-in-out`}
           style={{
             bottom: `${idx * 18 + 2}px`,
             right: `${idx * 18 + 2}px`,
             zIndex: isCurrentPlayer ? 10 : 5,
-            transform: isCurrentPlayer ? "scale(1.2)" : "scale(1)",
-            boxShadow: isCurrentPlayer
-              ? "0 0 10px rgba(255,255,0,0.5)"
-              : "none",
+            transform: isMoving
+              ? "scale(1.5)"
+              : isCurrentPlayer
+                ? "scale(1.2)"
+                : "scale(1)",
+            boxShadow: isMoving
+              ? "0 0 20px rgba(255,215,0,0.8)"
+              : isCurrentPlayer
+                ? "0 0 10px rgba(255,255,0,0.5)"
+                : "none",
+            transition: "all 0.5s ease-in-out",
           }}
         >
           <span className="text-xs">{style.token}</span>
@@ -276,6 +354,40 @@ export default function GameBoard() {
   const currentPlayerName =
     players.find((p) => p.ID === currentTurn)?.name || "Waiting...";
 
+  // Show game over modal
+  if (gameOver) {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-slate-800 via-teal-900 to-slate-900 p-4 flex items-center justify-center">
+        <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
+          <h2 className="text-3xl font-bold text-center text-red-600 mb-4">
+            🏆 Game Over!
+          </h2>
+          <div className="text-center mb-6">
+            <p className="text-xl font-semibold text-gray-800">
+              {gameOver.message}
+            </p>
+            {gameOver.winner && (
+              <div className="mt-4 p-4 bg-yellow-50 rounded-lg border-2 border-yellow-400">
+                <p className="text-lg font-bold text-yellow-700">
+                  Winner: {gameOver.winner.name}
+                </p>
+                <p className="text-md text-gray-600">
+                  Money: K{gameOver.winner.money}
+                </p>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg transition-colors"
+          >
+            Play Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-800 via-teal-900 to-slate-900 p-4 flex items-center justify-center">
       <div className="relative w-full max-w-6xl">
@@ -289,6 +401,13 @@ export default function GameBoard() {
               <span className="text-[rgb(250,249,245)] font-medium text-sm">
                 K 4,250
               </span>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <span className="text-[rgb(250,249,245)] font-medium text-sm">
+                Month:
+              </span>
+              <span className="text-amber-300 font-bold">{turnNumber}/12</span>
             </div>
 
             <div className="flex items-center gap-4">
@@ -424,9 +543,17 @@ export default function GameBoard() {
                       <div className="flex gap-4">
                         <button
                           onClick={handleRollDice}
-                          disabled={isRolling || currentTurn !== ID}
+                          disabled={
+                            isRolling ||
+                            currentTurn !== ID ||
+                            !isGameStarted ||
+                            gameOver !== null
+                          }
                           className={`bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-8 py-3 rounded-lg shadow-lg transition-colors ${
-                            isRolling || currentTurn !== ID
+                            isRolling ||
+                            currentTurn !== ID ||
+                            !isGameStarted ||
+                            gameOver !== null
                               ? "opacity-50 cursor-not-allowed"
                               : ""
                           }`}
@@ -444,6 +571,16 @@ export default function GameBoard() {
                           </div>
                         )}
                       </div>
+                      {!isGameStarted && (
+                        <p className="text-sm text-amber-600 mt-2 font-semibold">
+                          ⏳ Waiting for host to start the game...
+                        </p>
+                      )}
+                      {isGameStarted && (
+                        <p className="text-sm text-gray-600 mt-2">
+                          Month {turnNumber}/12
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { useGame, usePlayer } from "../services/states";
 import { playerColors, playerTokens } from "../services/playerConfigs";
-import { socket, rollDice } from "../services/socket";
+import { socket, rollDice, leaveGame } from "../services/socket";
+import { useNavigate } from "react-router";
+import { toast } from "sonner";
 
 export default function GameBoard() {
+  const navigate = useNavigate();
   const {
     players,
     currentTurn,
@@ -16,16 +19,16 @@ export default function GameBoard() {
     setIsGameStarted,
     turnNumber,
     setTurnNumber,
-    maxTurns,
     setMaxTurns,
   } = useGame();
-  const { ID, position, setPosition } = usePlayer();
+  const { ID, position, setPosition, setIsHost, setName } = usePlayer();
   const [isRolling, setIsRolling] = useState(false);
   const [movingPlayer, setMovingPlayer] = useState<string | null>(null);
   const [gameOver, setGameOver] = useState<{
     winner: any;
     message: string;
   } | null>(null);
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false);
 
   const corners = {
     topLeft: { name: "GO", color: "gray" },
@@ -212,7 +215,7 @@ export default function GameBoard() {
     });
 
     // Handle player-joined event
-    socket.on("player-joined", ({ players: updatedPlayers, playerId }) => {
+    socket.on("player-joined", ({ players: updatedPlayers }) => {
       setPlayers(updatedPlayers);
     });
 
@@ -222,6 +225,22 @@ export default function GameBoard() {
       setIsGameStarted(false);
     });
 
+    // Handle host left with new host info
+    socket.on("host-left", ({ newHost, newHostName }) => {
+      toast.info(`${newHostName} is now the new host!`);
+      // Update the players list to reflect the new host
+      const updatedPlayers = players.map((p) => ({
+        ...p,
+        isHost: p.ID === newHost,
+      }));
+      setPlayers(updatedPlayers);
+    });
+
+    // Handle left-game event (confirmation from server)
+    socket.on("left-game", ({ message }) => {
+      toast.info(message);
+    });
+
     return () => {
       socket.off("game-started");
       socket.off("dice-rolled");
@@ -229,6 +248,8 @@ export default function GameBoard() {
       socket.off("players-updated");
       socket.off("player-joined");
       socket.off("game-over");
+      socket.off("host-left");
+      socket.off("left-game");
     };
   }, [
     ID,
@@ -255,6 +276,41 @@ export default function GameBoard() {
 
     // Use the exported rollDice function
     rollDice(roomCode, ID, dice1, dice2, newPosition);
+  };
+
+  const handleQuitGame = () => {
+    // Send leave-game event to server instead of disconnecting
+    if (roomCode) {
+      leaveGame(roomCode);
+    }
+
+    // Reset all states
+    setPlayers([]);
+    setCurrentTurn("");
+    setIsGameStarted(false);
+    setTurnNumber(0);
+    setPosition(0);
+    setIsHost(false);
+    setName("");
+    setCurrentDiceRoll([]);
+    setGameOver(null);
+
+    // Navigate back to landing page
+    navigate("/");
+    toast.info("You have left the game");
+  };
+
+  const handleQuitClick = () => {
+    setShowQuitConfirm(true);
+  };
+
+  const handleConfirmQuit = () => {
+    setShowQuitConfirm(false);
+    handleQuitGame();
+  };
+
+  const handleCancelQuit = () => {
+    setShowQuitConfirm(false);
   };
 
   // Get player style using their assigned token
@@ -430,6 +486,14 @@ export default function GameBoard() {
                 <span className="text-[rgb(194,192,182)] text-sm">70%</span>
               </div>
             </div>
+
+            {/* Quit Button */}
+            <button
+              onClick={handleQuitClick}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-2 text-sm cursor-pointer"
+            >
+              Quit Game
+            </button>
           </div>
         </div>
 
@@ -496,7 +560,7 @@ export default function GameBoard() {
                         Players in Game
                       </h3>
                       <div className="space-y-2">
-                        {players.map((player, index) => {
+                        {players.map((player) => {
                           const style = getPlayerStyle(player);
                           const isCurrentPlayer = player.ID === ID;
                           const isTurn = player.ID === currentTurn;
@@ -620,6 +684,35 @@ export default function GameBoard() {
           </div>
         </div>
       </div>
+
+      {/* Quit Confirmation Modal */}
+      {showQuitConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+            <h2 className="text-2xl font-bold text-center text-red-600 mb-4">
+              ⚠️ Quit Game?
+            </h2>
+            <p className="text-gray-700 text-center mb-6">
+              Are you sure you want to leave the game? You will be disconnected
+              and will need to rejoin with a new room code.
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={handleCancelQuit}
+                className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmQuit}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition-colors"
+              >
+                Yes, Quit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

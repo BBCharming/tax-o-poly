@@ -64,7 +64,7 @@ export const useGame = create<game>((set) => ({
   setCurrentTurn: (playerId) => set({ currentTurn: playerId }),
   currentDiceRoll: [],
   setCurrentDiceRoll: (roll) => set({ currentDiceRoll: roll }),
-  turnNumber: 0,
+  turnNumber: 1,
   setTurnNumber: (turn) => set({ turnNumber: turn }),
   maxTurns: 12,
   setMaxTurns: (max) => set({ maxTurns: max }),

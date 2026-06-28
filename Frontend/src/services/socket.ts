@@ -33,3 +33,15 @@ export const rollDice = (
 ) => {
   socket.emit("roll-dice", { roomCode, playerId, dice1, dice2, newPosition });
 };
+
+export const leaveGame = (roomCode: string) => {
+  socket.emit("leave-game", { roomCode });
+};
+
+export const disconnectSocket = () => {
+  socket.disconnect();
+};
+
+export const reconnectSocket = () => {
+  socket.connect();
+};

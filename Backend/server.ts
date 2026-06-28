@@ -61,7 +61,7 @@ io.on("connection", (socket: any) => {
         maxPlayers: 6,
         isGameStarted: false,
         currentTurn: socket.id, // Host goes first
-        turnNumber: 0, // Track turns
+        turnNumber: 1, // Track turns
         maxTurns: 12, // 12 months in a year
         gameWinner: null, // Track winner
       });
@@ -128,13 +128,62 @@ io.on("connection", (socket: any) => {
     },
   );
 
+  // Handle player leaving gracefully (not disconnecting)
+  socket.on("leave-game", ({ roomCode }: { roomCode: string }) => {
+    const game = games.get(roomCode);
+    if (!game) return;
+
+    const playerIndex = game.players.findIndex((p: any) => p.id === socket.id);
+    if (playerIndex === -1) return;
+
+    const wasHost = game.players[playerIndex].isHost;
+    const wasCurrentTurn = game.currentTurn === socket.id;
+
+    // Remove player
+    game.players.splice(playerIndex, 1);
+
+    if (game.players.length === 0) {
+      // Delete empty game
+      games.delete(roomCode);
+      socket.leave(roomCode);
+      return;
+    }
+
+    // If host left, assign new host
+    if (wasHost && game.players.length > 0) {
+      game.players[0].isHost = true;
+      io.to(roomCode).emit("host-left", {
+        newHost: game.players[0].id,
+        newHostName: game.players[0].name,
+      });
+    }
+
+    // If the leaving player was the current turn, move to next player
+    if (wasCurrentTurn && game.players.length > 0) {
+      const nextIndex = 0; // Start from first player
+      game.currentTurn = game.players[nextIndex].id;
+      io.to(roomCode).emit("turn-changed", {
+        playerId: game.players[nextIndex].id,
+        turnNumber: game.turnNumber,
+        maxTurns: game.maxTurns,
+      });
+    }
+
+    games.set(roomCode, game);
+    io.to(roomCode).emit("players-updated", game.players);
+    socket.leave(roomCode);
+
+    // Notify the player that they've left
+    socket.emit("left-game", { message: "You have left the game" });
+  });
+
   // Start game
   socket.on("start-game", ({ roomCode }: { roomCode: string }) => {
     const game = games.get(roomCode);
 
     if (game && !game.isGameStarted) {
       game.isGameStarted = true;
-      game.turnNumber = 0;
+      game.turnNumber = 1;
       game.currentTurn = game.players[0].id; // First player goes first
       games.set(roomCode, game);
 
@@ -247,7 +296,7 @@ io.on("connection", (socket: any) => {
     },
   );
 
-  // Handle disconnection
+  // Handle disconnection (unexpected disconnection like browser close)
   socket.on("disconnect", () => {
     console.log("Client disconnected:", socket.id);
 
@@ -259,21 +308,39 @@ io.on("connection", (socket: any) => {
 
       if (playerIndex !== -1) {
         const wasHost = game.players[playerIndex].isHost;
+        const wasCurrentTurn = game.currentTurn === socket.id;
+
+        // Remove player
         game.players.splice(playerIndex, 1);
 
         if (game.players.length === 0) {
           // Delete empty game
           games.delete(roomCode);
-        } else if (wasHost && game.players.length > 0) {
-          // Assign new host
+          break;
+        }
+
+        // If host left, assign new host
+        if (wasHost && game.players.length > 0) {
           game.players[0].isHost = true;
-          io.to(roomCode).emit("players-updated", game.players);
-          io.to(roomCode).emit("host-left");
-        } else {
-          io.to(roomCode).emit("players-updated", game.players);
+          io.to(roomCode).emit("host-left", {
+            newHost: game.players[0].id,
+            newHostName: game.players[0].name,
+          });
+        }
+
+        // If the disconnected player was the current turn, move to next player
+        if (wasCurrentTurn && game.players.length > 0) {
+          const nextIndex = 0; // Start from first player
+          game.currentTurn = game.players[nextIndex].id;
+          io.to(roomCode).emit("turn-changed", {
+            playerId: game.players[nextIndex].id,
+            turnNumber: game.turnNumber,
+            maxTurns: game.maxTurns,
+          });
         }
 
         games.set(roomCode, game);
+        io.to(roomCode).emit("players-updated", game.players);
         break;
       }
     }

@@ -7,17 +7,28 @@ import JoinPage from "./pages/joinPage.tsx";
 import { Toaster } from "sonner";
 import GameLobby from "./pages/gameLobby.tsx";
 import GameBoard from "./pages/mainBoard.tsx";
+import { useSocketListeners } from "./services/useSocketListeners.ts";
+
+function Root() {
+  useSocketListeners();
+
+  return (
+    <>
+      <Toaster position="top-right" />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/join" element={<JoinPage />} />
+          <Route path="/lobby" element={<GameLobby />} />
+          <Route path="/:roomCode/board" element={<GameBoard />} />
+        </Routes>
+      </BrowserRouter>
+    </>
+  );
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Toaster position="top-right" />
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/join" element={<JoinPage />} />
-        <Route path="/lobby" element={<GameLobby />} />
-        <Route path="/:roomCode/board" element={<GameBoard />} />
-      </Routes>
-    </BrowserRouter>
+    <Root />
   </StrictMode>,
 );

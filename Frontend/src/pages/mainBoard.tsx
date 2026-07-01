@@ -11,15 +11,14 @@ export default function GameBoard() {
     players,
     currentTurn,
     currentDiceRoll,
-    setCurrentDiceRoll,
-    setCurrentTurn,
     setPlayers,
+    setCurrentTurn,
+    setIsGameStarted,
     roomCode,
     isGameStarted,
-    setIsGameStarted,
     turnNumber,
     setTurnNumber,
-    setMaxTurns,
+    setCurrentDiceRoll,
   } = useGame();
   const { ID, position, setPosition, setIsHost, setName } = usePlayer();
   const [isRolling, setIsRolling] = useState(false);
@@ -151,119 +150,35 @@ export default function GameBoard() {
     }
   };
 
+  // Local-only listeners: things that don't belong in global state
+  // (component animation, page-specific toasts, and the game-over modal,
+  // which the global store doesn't track). Everything else — players,
+  // currentTurn, turnNumber, position — is handled by useSocketListeners
+  // in main.tsx and is already correct by the time this component mounts.
   useEffect(() => {
-    // Listen for game started event
-    socket.on(
-      "game-started",
-      ({
-        currentTurn: turn,
-        players: updatedPlayers,
-        turnNumber,
-        maxTurns,
-      }) => {
-        setPlayers(updatedPlayers);
-        setCurrentTurn(turn);
-        setTurnNumber(turnNumber);
-        setMaxTurns(maxTurns);
-        setIsGameStarted(true);
-      },
-    );
-
-    // Listen for dice roll events
-    socket.on(
-      "dice-rolled",
-      ({ playerId, dice1, dice2, newPosition, turnNumber }) => {
-        setMovingPlayer(playerId);
-
-        // Update the player's position in the players list
-        const updatedPlayers = players.map((p) =>
-          p.ID === playerId ? { ...p, position: newPosition } : p,
-        );
-        setPlayers(updatedPlayers);
-
-        // If it's the current player, update their local position
-        if (playerId === ID) {
-          setPosition(newPosition);
-        }
-
-        setCurrentDiceRoll([dice1, dice2]);
-        setTurnNumber(turnNumber);
-        setIsRolling(false);
-
-        // Clear moving state after animation
-        setTimeout(() => setMovingPlayer(null), 600);
-      },
-    );
-
-    socket.on("turn-changed", ({ playerId, turnNumber }) => {
-      setCurrentTurn(playerId);
-      setTurnNumber(turnNumber);
+    // Drives the token "hop" animation only
+    socket.on("dice-rolled", ({ playerId }) => {
+      setMovingPlayer(playerId);
+      setIsRolling(false);
+      setTimeout(() => setMovingPlayer(null), 600);
     });
 
-    socket.on("players-updated", (updatedPlayers) => {
-      setPlayers(updatedPlayers);
-      // Update local position if this player is in the list
-      const currentPlayer = updatedPlayers.find((p: any) => p.ID === ID);
-      if (currentPlayer) {
-        setPosition(currentPlayer.position);
-      }
-
-      // If currentTurn is not set and we have players, set the first player as turn
-      if (!currentTurn && updatedPlayers.length > 0 && isGameStarted) {
-        setCurrentTurn(updatedPlayers[0].ID);
-      }
+    // Page-specific toast when host changes mid-game
+    socket.on("host-left", ({ newHostName }) => {
+      toast.info(`${newHostName} is now the new host!`);
     });
 
-    // Handle player-joined event
-    socket.on("player-joined", ({ players: updatedPlayers }) => {
-      setPlayers(updatedPlayers);
-    });
-
-    // Handle game over
+    // Game over modal — not tracked globally, so handled here
     socket.on("game-over", ({ winner, message }) => {
       setGameOver({ winner, message });
-      setIsGameStarted(false);
-    });
-
-    // Handle host left with new host info
-    socket.on("host-left", ({ newHost, newHostName }) => {
-      toast.info(`${newHostName} is now the new host!`);
-      // Update the players list to reflect the new host
-      const updatedPlayers = players.map((p) => ({
-        ...p,
-        isHost: p.ID === newHost,
-      }));
-      setPlayers(updatedPlayers);
-    });
-
-    // Handle left-game event (confirmation from server)
-    socket.on("left-game", ({ message }) => {
-      toast.info(message);
     });
 
     return () => {
-      socket.off("game-started");
       socket.off("dice-rolled");
-      socket.off("turn-changed");
-      socket.off("players-updated");
-      socket.off("player-joined");
-      socket.off("game-over");
       socket.off("host-left");
-      socket.off("left-game");
+      socket.off("game-over");
     };
-  }, [
-    ID,
-    setPosition,
-    setCurrentDiceRoll,
-    setCurrentTurn,
-    players,
-    setPlayers,
-    currentTurn,
-    isGameStarted,
-    setIsGameStarted,
-    setTurnNumber,
-    setMaxTurns,
-  ]);
+  }, []);
 
   const handleRollDice = () => {
     if (isRolling || currentTurn !== ID || !isGameStarted || gameOver) return;
@@ -274,17 +189,14 @@ export default function GameBoard() {
     const total = dice1 + dice2;
     const newPosition = (position + total) % 40;
 
-    // Use the exported rollDice function
     rollDice(roomCode, ID, dice1, dice2, newPosition);
   };
 
   const handleQuitGame = () => {
-    // Send leave-game event to server instead of disconnecting
     if (roomCode) {
       leaveGame(roomCode);
     }
 
-    // Reset all states
     setPlayers([]);
     setCurrentTurn("");
     setIsGameStarted(false);
@@ -295,7 +207,6 @@ export default function GameBoard() {
     setCurrentDiceRoll([]);
     setGameOver(null);
 
-    // Navigate back to landing page
     navigate("/");
     toast.info("You have left the game");
   };
@@ -313,9 +224,7 @@ export default function GameBoard() {
     setShowQuitConfirm(false);
   };
 
-  // Get player style using their assigned token
   const getPlayerStyle = (player: any) => {
-    // Find the player's token in the playerTokens array
     const tokenIndex = playerTokens.indexOf(player.token);
     const colorIndex = tokenIndex >= 0 ? tokenIndex : 0;
     const color = playerColors[colorIndex % playerColors.length];
@@ -408,9 +317,8 @@ export default function GameBoard() {
   };
 
   const currentPlayerName =
-    players.find((p) => p.ID === currentTurn)?.name || "Waiting...";
+    players.find((p) => (p.ID || p.id) === currentTurn)?.name || "Waiting...";
 
-  // Show game over modal
   if (gameOver) {
     return (
       <div className="min-h-screen bg-linear-to-br from-slate-800 via-teal-900 to-slate-900 p-4 flex items-center justify-center">
@@ -535,9 +443,8 @@ export default function GameBoard() {
                   ))}
                 </div>
 
-                {/* Center Area - Now with side-by-side layout */}
+                {/* Center Area */}
                 <div className="flex-1 bg-teal-50 flex flex-col items-center justify-center p-8">
-                  {/* Logo/Title - Big on top */}
                   <div className="bg-linear-to-r from-red-600 to-red-700 px-12 py-6 rounded-xl shadow-xl mb-6 border-4 border-white">
                     <h1 className="text-6xl font-black text-white tracking-wider text-center">
                       TAX-OPOLY
@@ -547,14 +454,11 @@ export default function GameBoard() {
                     </p>
                   </div>
 
-                  {/* Position indicator */}
                   <div className="text-sm text-gray-600 bg-white/80 px-4 py-2 rounded-lg mb-4">
                     Your position: {position}
                   </div>
 
-                  {/* Players + Dice Controls - Side by side */}
                   <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Left: Player Info with max height and scroll */}
                     <div className="bg-white/80 rounded-xl p-6 shadow-lg">
                       <h3 className="text-gray-800 font-semibold text-center mb-4">
                         Players in Game
@@ -602,7 +506,6 @@ export default function GameBoard() {
                       </div>
                     </div>
 
-                    {/* Right: Dice Controls */}
                     <div className="flex flex-col items-center justify-center bg-white/80 rounded-xl p-6 shadow-lg">
                       <div className="flex gap-4">
                         <button

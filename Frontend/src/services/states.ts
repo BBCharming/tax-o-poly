@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 export interface Player {
+  id: string;
   ID: string;
   name: string;
   isHost: boolean;
@@ -11,6 +12,7 @@ export interface Player {
 }
 
 interface player {
+  id: string;
   ID: string;
   setID: (id: string) => void;
   name: string;
@@ -41,6 +43,7 @@ interface game {
 }
 
 export const usePlayer = create<player>((set) => ({
+  id: "",
   ID: "",
   setID: (id: string) => set({ ID: id }),
   name: "",

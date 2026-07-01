@@ -11,7 +11,7 @@ const io = new Server(server, {
   },
 });
 
-// Player tokens and colors for assignment
+// Config
 const PLAYER_TOKENS = ["🐻", "🚀", "🐱", "🐶", "🤖", "🦁"];
 const PLAYER_COLORS = [
   "bg-red-500",
@@ -24,29 +24,24 @@ const PLAYER_COLORS = [
 
 const games = new Map();
 
+// Helper to get player by ID
+const findPlayerIndex = (players: any[], playerId: string) =>
+  players.findIndex((p) => p.ID === playerId || p.id === playerId);
+
 io.on("connection", (socket: any) => {
   console.log("New client connected:", socket.id);
 
-  // Create new game
+  // ====================== CREATE GAME ======================
   socket.on(
     "create-game",
-    ({
-      roomCode,
-      name,
-      isHost,
-    }: {
-      roomCode: string;
-      name: string;
-      isHost: boolean;
-    }) => {
+    ({ roomCode, name }: { roomCode: string; name: string }) => {
       if (games.has(roomCode)) {
-        socket.emit("error", { message: "Game already exists!" });
-        return;
+        return socket.emit("error", { message: "Game already exists!" });
       }
 
-      // Create host player with token and color
       const hostPlayer = {
         id: socket.id,
+        ID: socket.id,
         name,
         isHost: true,
         position: 0,
@@ -55,55 +50,41 @@ io.on("connection", (socket: any) => {
         color: PLAYER_COLORS[0],
       };
 
-      const players = [hostPlayer];
-      games.set(roomCode, {
-        players,
+      const gameData = {
+        players: [hostPlayer],
         maxPlayers: 6,
         isGameStarted: false,
-        currentTurn: socket.id, // Host goes first
-        turnNumber: 1, // Track turns
-        maxTurns: 12, // 12 months in a year
-        gameWinner: null, // Track winner
-      });
+        currentTurn: socket.id,
+        turnNumber: 1,
+        maxTurns: 12,
+        gameWinner: null,
+      };
 
+      games.set(roomCode, gameData);
       socket.join(roomCode);
-      socket.emit("game-created", { roomCode, players, playerId: socket.id });
+      socket.emit("game-created", {
+        roomCode,
+        players: [hostPlayer],
+        playerId: socket.id,
+      });
     },
   );
 
-  // Join existing game
+  // ====================== JOIN GAME ======================
   socket.on(
     "join-game",
-    ({
-      roomCode,
-      name,
-      isHost,
-    }: {
-      roomCode: string;
-      name: string;
-      isHost: boolean;
-    }) => {
+    ({ roomCode, name }: { roomCode: string; name: string }) => {
       const game = games.get(roomCode);
+      if (!game) return socket.emit("game-not-found");
+      if (game.isGameStarted)
+        return socket.emit("error", { message: "Game already in progress!" });
+      if (game.players.length >= game.maxPlayers)
+        return socket.emit("game-full");
 
-      if (!game) {
-        socket.emit("game-not-found");
-        return;
-      }
-
-      if (game.isGameStarted) {
-        socket.emit("error", { message: "Game already in progress!" });
-        return;
-      }
-
-      if (game.players.length >= game.maxPlayers) {
-        socket.emit("game-full");
-        return;
-      }
-
-      // Assign token and color based on player count
       const playerIndex = game.players.length;
       const newPlayer = {
         id: socket.id,
+        ID: socket.id,
         name,
         isHost: false,
         position: 0,
@@ -116,233 +97,163 @@ io.on("connection", (socket: any) => {
       games.set(roomCode, game);
 
       socket.join(roomCode);
-
-      // Send the current game state to the new player
       socket.emit("player-joined", {
         players: game.players,
         playerId: socket.id,
       });
-
-      // Broadcast updated player list to everyone
       io.to(roomCode).emit("players-updated", game.players);
     },
   );
 
-  // Handle player leaving gracefully (not disconnecting)
-  socket.on("leave-game", ({ roomCode }: { roomCode: string }) => {
-    const game = games.get(roomCode);
-    if (!game) return;
-
-    const playerIndex = game.players.findIndex((p: any) => p.id === socket.id);
-    if (playerIndex === -1) return;
-
-    const wasHost = game.players[playerIndex].isHost;
-    const wasCurrentTurn = game.currentTurn === socket.id;
-
-    // Remove player
-    game.players.splice(playerIndex, 1);
-
-    if (game.players.length === 0) {
-      // Delete empty game
-      games.delete(roomCode);
-      socket.leave(roomCode);
-      return;
-    }
-
-    // If host left, assign new host
-    if (wasHost && game.players.length > 0) {
-      game.players[0].isHost = true;
-      io.to(roomCode).emit("host-left", {
-        newHost: game.players[0].id,
-        newHostName: game.players[0].name,
-      });
-    }
-
-    // If the leaving player was the current turn, move to next player
-    if (wasCurrentTurn && game.players.length > 0) {
-      const nextIndex = 0; // Start from first player
-      game.currentTurn = game.players[nextIndex].id;
-      io.to(roomCode).emit("turn-changed", {
-        playerId: game.players[nextIndex].id,
-        turnNumber: game.turnNumber,
-        maxTurns: game.maxTurns,
-      });
-    }
-
-    games.set(roomCode, game);
-    io.to(roomCode).emit("players-updated", game.players);
-    socket.leave(roomCode);
-
-    // Notify the player that they've left
-    socket.emit("left-game", { message: "You have left the game" });
-  });
-
-  // Start game
+  // ====================== START GAME ======================
   socket.on("start-game", ({ roomCode }: { roomCode: string }) => {
     const game = games.get(roomCode);
+    if (!game || game.isGameStarted) return;
 
-    if (game && !game.isGameStarted) {
-      game.isGameStarted = true;
-      game.turnNumber = 1;
-      game.currentTurn = game.players[0].id; // First player goes first
-      games.set(roomCode, game);
+    game.isGameStarted = true;
+    game.turnNumber = 1;
+    game.currentTurn = game.players[0].ID;
 
-      // Send the current turn with the game started event
-      io.to(roomCode).emit("game-started", {
-        currentTurn: game.players[0].id,
-        players: game.players,
-        turnNumber: game.turnNumber,
-        maxTurns: game.maxTurns,
-      });
-    }
+    games.set(roomCode, game);
+
+    io.to(roomCode).emit("game-started", {
+      currentTurn: game.currentTurn,
+      players: game.players,
+      turnNumber: game.turnNumber,
+      maxTurns: game.maxTurns,
+    });
   });
 
-  // Handle dice roll
+  // ====================== ROLL DICE ======================
   socket.on(
     "roll-dice",
-    ({
-      roomCode,
-      playerId,
-      dice1,
-      dice2,
-      newPosition,
-    }: {
-      roomCode: string;
-      playerId: string;
-      dice1: number;
-      dice2: number;
-      newPosition: number;
-    }) => {
+    ({ roomCode, playerId, dice1, dice2, newPosition }: any) => {
       const game = games.get(roomCode);
+      if (!game || !game.isGameStarted) return;
 
-      if (!game || !game.isGameStarted) {
-        console.log("Game not found or not started");
-        return;
-      }
+      const playerIndex = findPlayerIndex(game.players, playerId);
+      if (playerIndex === -1) return;
 
-      // Check if game is over (reached max turns)
-      if (game.turnNumber >= game.maxTurns) {
-        io.to(roomCode).emit("game-over", {
-          winner: game.gameWinner,
-          message: "Game Over! All 12 months completed!",
-        });
-        return;
-      }
-
-      // Find the player
-      const playerIndex = game.players.findIndex((p: any) => p.id === playerId);
-      if (playerIndex === -1) {
-        console.log("Player not found");
-        return;
-      }
-
-      // Update player position
-      const player = game.players[playerIndex];
-      const oldPosition = player.position;
-      player.position = newPosition;
-
-      console.log(
-        `Player ${player.name} moved from ${oldPosition} to ${newPosition}`,
-      );
-
-      // Increment turn number
+      // Update position
+      game.players[playerIndex].position = newPosition;
       game.turnNumber += 1;
 
-      // Save updated game
       games.set(roomCode, game);
 
-      // Broadcast dice roll to all players
+      // Broadcast roll
       io.to(roomCode).emit("dice-rolled", {
         playerId,
         dice1,
         dice2,
         newPosition,
         turnNumber: game.turnNumber,
-        maxTurns: game.maxTurns,
       });
 
-      // Check if game is over
+      // Check game over
       if (game.turnNumber >= game.maxTurns) {
-        // Determine winner (player with most money)
         let winner = game.players[0];
         for (const p of game.players) {
-          if (p.money > winner.money) {
-            winner = p;
-          }
+          if (p.money > winner.money) winner = p;
         }
-        game.gameWinner = winner;
-        games.set(roomCode, game);
-
         io.to(roomCode).emit("game-over", {
-          winner: winner,
+          winner,
           message: `Game Over! ${winner.name} wins with K${winner.money}!`,
         });
         return;
       }
 
-      // Move to next turn
+      // Next turn
       const nextIndex = (playerIndex + 1) % game.players.length;
-      const nextPlayer = game.players[nextIndex];
-      game.currentTurn = nextPlayer.id;
-
+      game.currentTurn = game.players[nextIndex].ID;
       games.set(roomCode, game);
 
-      // Broadcast turn change
       io.to(roomCode).emit("turn-changed", {
-        playerId: nextPlayer.id,
+        playerId: game.currentTurn,
         turnNumber: game.turnNumber,
-        maxTurns: game.maxTurns,
       });
     },
   );
 
-  // Handle disconnection (unexpected disconnection like browser close)
+  // ====================== LEAVE GAME ======================
+  socket.on("leave-game", ({ roomCode }: { roomCode: string }) => {
+    const game = games.get(roomCode);
+    if (!game) return;
+
+    const playerIndex = findPlayerIndex(game.players, socket.id);
+    if (playerIndex === -1) return;
+
+    const wasHost = game.players[playerIndex].isHost;
+    const wasCurrentTurn = game.currentTurn === socket.id;
+
+    game.players.splice(playerIndex, 1);
+
+    if (game.players.length === 0) {
+      games.delete(roomCode);
+      socket.leave(roomCode);
+      return;
+    }
+
+    // New host if needed
+    if (wasHost) {
+      game.players[0].isHost = true;
+      io.to(roomCode).emit("host-left", {
+        newHost: game.players[0].ID,
+        newHostName: game.players[0].name,
+      });
+    }
+
+    // Next turn if current player left
+    if (wasCurrentTurn) {
+      game.currentTurn = game.players[0].ID;
+      io.to(roomCode).emit("turn-changed", {
+        playerId: game.currentTurn,
+        turnNumber: game.turnNumber,
+      });
+    }
+
+    games.set(roomCode, game);
+    io.to(roomCode).emit("players-updated", game.players);
+    socket.leave(roomCode);
+    socket.emit("left-game", { message: "You have left the game" });
+  });
+
+  // ====================== DISCONNECT ======================
   socket.on("disconnect", () => {
     console.log("Client disconnected:", socket.id);
 
-    // Remove player from any game they were in
     for (const [roomCode, game] of games.entries()) {
-      const playerIndex = game.players.findIndex(
-        (p: { id: string }) => p.id === socket.id,
-      );
+      const playerIndex = findPlayerIndex(game.players, socket.id);
+      if (playerIndex === -1) continue;
 
-      if (playerIndex !== -1) {
-        const wasHost = game.players[playerIndex].isHost;
-        const wasCurrentTurn = game.currentTurn === socket.id;
+      const wasHost = game.players[playerIndex].isHost;
+      const wasCurrentTurn = game.currentTurn === socket.id;
 
-        // Remove player
-        game.players.splice(playerIndex, 1);
+      game.players.splice(playerIndex, 1);
 
-        if (game.players.length === 0) {
-          // Delete empty game
-          games.delete(roomCode);
-          break;
-        }
-
-        // If host left, assign new host
-        if (wasHost && game.players.length > 0) {
-          game.players[0].isHost = true;
-          io.to(roomCode).emit("host-left", {
-            newHost: game.players[0].id,
-            newHostName: game.players[0].name,
-          });
-        }
-
-        // If the disconnected player was the current turn, move to next player
-        if (wasCurrentTurn && game.players.length > 0) {
-          const nextIndex = 0; // Start from first player
-          game.currentTurn = game.players[nextIndex].id;
-          io.to(roomCode).emit("turn-changed", {
-            playerId: game.players[nextIndex].id,
-            turnNumber: game.turnNumber,
-            maxTurns: game.maxTurns,
-          });
-        }
-
-        games.set(roomCode, game);
-        io.to(roomCode).emit("players-updated", game.players);
+      if (game.players.length === 0) {
+        games.delete(roomCode);
         break;
       }
+
+      if (wasHost) {
+        game.players[0].isHost = true;
+        io.to(roomCode).emit("host-left", {
+          newHost: game.players[0].ID,
+          newHostName: game.players[0].name,
+        });
+      }
+
+      if (wasCurrentTurn) {
+        game.currentTurn = game.players[0].ID;
+        io.to(roomCode).emit("turn-changed", {
+          playerId: game.currentTurn,
+          turnNumber: game.turnNumber,
+        });
+      }
+
+      games.set(roomCode, game);
+      io.to(roomCode).emit("players-updated", game.players);
+      break;
     }
   });
 });

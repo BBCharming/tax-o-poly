@@ -179,14 +179,8 @@ export default function GameBoard() {
 
   const handleRollDice = () => {
     if (isRolling || currentTurn !== ID || !isGameStarted || gameOver) return;
-    console.log("emitting roll-dice:", { roomCode, ID });
     setIsRolling(true);
     rollDice(roomCode, ID);
-    console.log("click:", { ID, currentTurn, isGameStarted });
-
-    setTimeout(() => {
-      console.log("Is rolling: ", isRolling);
-    }, 1000);
   };
 
   const handleQuitGame: any = () => {

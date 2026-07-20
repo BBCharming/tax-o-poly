@@ -129,13 +129,8 @@ io.on("connection", (socket: any) => {
 
   // ====================== ROLL DICE ======================
   socket.on("roll-dice", ({ roomCode, playerId }: any) => {
-    console.log("SERVER received roll-dice:", { roomCode, playerId });
     const game = games.get(roomCode);
-    console.log("SERVER game lookup:", {
-      exists: !!game,
-      started: game?.isGameStarted,
-      currentTurn: game?.currentTurn,
-    });
+
     if (!game || !game.isGameStarted) return;
     if (game.currentTurn !== playerId) return;
 
@@ -154,13 +149,6 @@ io.on("connection", (socket: any) => {
     games.set(roomCode, game);
 
     io.to(roomCode).emit("dice-rolled", {
-      playerId,
-      dice1,
-      dice2,
-      newPosition,
-      playerTurnNumber: player.turnNumber,
-    });
-    console.log("SERVER emitted dice-rolled:", {
       playerId,
       dice1,
       dice2,
@@ -187,7 +175,6 @@ io.on("connection", (socket: any) => {
     games.set(roomCode, game);
 
     io.to(roomCode).emit("turn-changed", { playerId: game.currentTurn });
-    console.log("SERVER emitted turn-changed:", game.currentTurn);
   });
 
   // ====================== LEAVE GAME ======================

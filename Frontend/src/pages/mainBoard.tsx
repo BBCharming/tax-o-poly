@@ -16,11 +16,12 @@ export default function GameBoard() {
     setIsGameStarted,
     roomCode,
     isGameStarted,
-    turnNumber,
     setTurnNumber,
     setCurrentDiceRoll,
+    maxTurns,
   } = useGame();
   const { ID, position, setPosition, setIsHost, setName } = usePlayer();
+  const playerRound = players.find((p) => p.ID === ID)?.turnNumber ?? 1;
   const [isRolling, setIsRolling] = useState(false);
   const [movingPlayer, setMovingPlayer] = useState<string | null>(null);
   const [gameOver, setGameOver] = useState<{
@@ -150,49 +151,45 @@ export default function GameBoard() {
     }
   };
 
-  // Local-only listeners: things that don't belong in global state
-  // (component animation, page-specific toasts, and the game-over modal,
-  // which the global store doesn't track). Everything else — players,
-  // currentTurn, turnNumber, position — is handled by useSocketListeners
-  // in main.tsx and is already correct by the time this component mounts.
   useEffect(() => {
-    // Drives the token "hop" animation only
-    socket.on("dice-rolled", ({ playerId }) => {
+    const handleDiceRolled = ({ playerId }: any) => {
       setMovingPlayer(playerId);
       setIsRolling(false);
       setTimeout(() => setMovingPlayer(null), 600);
-    });
+    };
 
-    // Page-specific toast when host changes mid-game
-    socket.on("host-left", ({ newHostName }) => {
+    const handleHostLeft = ({ newHostName }: any) => {
       toast.info(`${newHostName} is now the new host!`);
-    });
+    };
 
-    // Game over modal — not tracked globally, so handled here
-    socket.on("game-over", ({ winner, message }) => {
+    const handleGameOver = ({ winner, message }: any) => {
       setGameOver({ winner, message });
-    });
+    };
+
+    socket.on("dice-rolled", handleDiceRolled);
+    socket.on("host-left", handleHostLeft);
+    socket.on("game-over", handleGameOver);
 
     return () => {
-      socket.off("dice-rolled");
-      socket.off("host-left");
-      socket.off("game-over");
+      socket.off("dice-rolled", handleDiceRolled);
+      socket.off("host-left", handleHostLeft);
+      socket.off("game-over", handleGameOver);
     };
   }, []);
 
   const handleRollDice = () => {
     if (isRolling || currentTurn !== ID || !isGameStarted || gameOver) return;
-
+    console.log("emitting roll-dice:", { roomCode, ID });
     setIsRolling(true);
-    const dice1 = Math.floor(Math.random() * 6) + 1;
-    const dice2 = Math.floor(Math.random() * 6) + 1;
-    const total = dice1 + dice2;
-    const newPosition = (position + total) % 40;
+    rollDice(roomCode, ID);
+    console.log("click:", { ID, currentTurn, isGameStarted });
 
-    rollDice(roomCode, ID, dice1, dice2, newPosition);
+    setTimeout(() => {
+      console.log("Is rolling: ", isRolling);
+    }, 1000);
   };
 
-  const handleQuitGame = () => {
+  const handleQuitGame: any = () => {
     if (roomCode) {
       leaveGame(roomCode);
     }
@@ -371,7 +368,9 @@ export default function GameBoard() {
               <span className="text-[rgb(250,249,245)] font-medium text-sm">
                 Month:
               </span>
-              <span className="text-amber-300 font-bold">{turnNumber}/12</span>
+              <span className="text-amber-300 font-bold">
+                {playerRound}/{maxTurns}
+              </span>
             </div>
 
             <div className="flex items-center gap-4">
@@ -410,6 +409,19 @@ export default function GameBoard() {
           {/* Game Board */}
           <div className="flex-1 bg-teal-100 border-8 border-gray-800 shadow-2xl">
             <div className="w-full flex flex-col">
+              {/*
+                Board ring layout (36 spaces total, matches server BOARD_SIZE):
+                0            = topLeft corner (GO)
+                1-8          = topSpaces, left -> right
+                9            = topRight corner (Free Parking)
+                10-17        = rightSpaces, top -> bottom
+                18           = bottomRight corner (Audit Lock!)
+                19-26        = bottomSpaces, right -> left (26-idx)
+                27           = bottomLeft corner (Tax Office)
+                28-35        = leftSpaces, bottom -> top (35-idx)
+                (35 -> wraps back to 0)
+              */}
+
               {/* Top Row */}
               <div className="flex w-full">
                 {renderSpace(corners.topLeft, 0, true)}
@@ -420,7 +432,7 @@ export default function GameBoard() {
                     </div>
                   ))}
                 </div>
-                {renderSpace(corners.topRight, 10, true)}
+                {renderSpace(corners.topRight, 9, true)}
               </div>
 
               {/* Middle Section */}
@@ -437,7 +449,7 @@ export default function GameBoard() {
                       style={{ height: "80px" }}
                     >
                       <div className="transform -rotate-90 origin-center">
-                        {renderSpace(space, 39 - idx, false, true)}
+                        {renderSpace(space, 35 - idx, false, true)}
                       </div>
                     </div>
                   ))}
@@ -497,7 +509,8 @@ export default function GameBoard() {
                                   </span>
                                 )}
                                 <span className="text-sm text-gray-600">
-                                  K {player.money || 1500}
+                                  Month {player.turnNumber}/{maxTurns} · K{" "}
+                                  {player.money || 1500}
                                 </span>
                               </div>
                             </div>
@@ -545,7 +558,7 @@ export default function GameBoard() {
                       )}
                       {isGameStarted && (
                         <p className="text-sm text-gray-600 mt-2">
-                          Month {turnNumber}/12
+                          Month {playerRound}/{maxTurns}
                         </p>
                       )}
                     </div>
@@ -564,7 +577,7 @@ export default function GameBoard() {
                       style={{ height: "80px" }}
                     >
                       <div className="transform rotate-90 origin-center">
-                        {renderSpace(space, 20 + idx, false, true)}
+                        {renderSpace(space, 10 + idx, false, true)}
                       </div>
                     </div>
                   ))}
@@ -573,15 +586,15 @@ export default function GameBoard() {
 
               {/* Bottom Row */}
               <div className="flex w-full">
-                {renderSpace(corners.bottomLeft, 30, true)}
+                {renderSpace(corners.bottomLeft, 27, true)}
                 <div className="flex flex-1">
                   {bottomSpaces.map((space, idx) => (
                     <div key={idx} className="flex-1">
-                      {renderSpace(space, 29 - idx)}
+                      {renderSpace(space, 26 - idx)}
                     </div>
                   ))}
                 </div>
-                {renderSpace(corners.bottomRight, 20, true)}
+                {renderSpace(corners.bottomRight, 18, true)}
               </div>
             </div>
           </div>

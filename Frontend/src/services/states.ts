@@ -9,6 +9,7 @@ export interface Player {
   money: number;
   token: string;
   color: string;
+  turnNumber: number;
 }
 
 interface player {

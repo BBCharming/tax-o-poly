@@ -21,6 +21,7 @@ const PLAYER_COLORS = [
   "bg-purple-500",
   "bg-pink-500",
 ];
+const BOARD_SIZE = 36;
 
 const games = new Map();
 
@@ -48,6 +49,7 @@ io.on("connection", (socket: any) => {
         money: 1500,
         token: PLAYER_TOKENS[0],
         color: PLAYER_COLORS[0],
+        turnNumber: 1,
       };
 
       const gameData = {
@@ -91,6 +93,7 @@ io.on("connection", (socket: any) => {
         money: 1500,
         token: PLAYER_TOKENS[playerIndex % PLAYER_TOKENS.length],
         color: PLAYER_COLORS[playerIndex % PLAYER_COLORS.length],
+        turnNumber: 1,
       };
 
       game.players.push(newPlayer);
@@ -125,54 +128,67 @@ io.on("connection", (socket: any) => {
   });
 
   // ====================== ROLL DICE ======================
-  socket.on(
-    "roll-dice",
-    ({ roomCode, playerId, dice1, dice2, newPosition }: any) => {
-      const game = games.get(roomCode);
-      if (!game || !game.isGameStarted) return;
+  socket.on("roll-dice", ({ roomCode, playerId }: any) => {
+    console.log("SERVER received roll-dice:", { roomCode, playerId });
+    const game = games.get(roomCode);
+    console.log("SERVER game lookup:", {
+      exists: !!game,
+      started: game?.isGameStarted,
+      currentTurn: game?.currentTurn,
+    });
+    if (!game || !game.isGameStarted) return;
+    if (game.currentTurn !== playerId) return;
 
-      const playerIndex = findPlayerIndex(game.players, playerId);
-      if (playerIndex === -1) return;
+    const playerIndex = findPlayerIndex(game.players, playerId);
+    if (playerIndex === -1) return;
 
-      // Update position
-      game.players[playerIndex].position = newPosition;
-      game.turnNumber += 1;
+    const player = game.players[playerIndex];
 
-      games.set(roomCode, game);
+    const dice1 = Math.floor(Math.random() * 6) + 1;
+    const dice2 = Math.floor(Math.random() * 6) + 1;
+    const newPosition = (player.position + dice1 + dice2) % BOARD_SIZE;
 
-      // Broadcast roll
-      io.to(roomCode).emit("dice-rolled", {
-        playerId,
-        dice1,
-        dice2,
-        newPosition,
-        turnNumber: game.turnNumber,
+    player.position = newPosition;
+    player.turnNumber += 1;
+
+    games.set(roomCode, game);
+
+    io.to(roomCode).emit("dice-rolled", {
+      playerId,
+      dice1,
+      dice2,
+      newPosition,
+      playerTurnNumber: player.turnNumber,
+    });
+    console.log("SERVER emitted dice-rolled:", {
+      playerId,
+      dice1,
+      dice2,
+      newPosition,
+      playerTurnNumber: player.turnNumber,
+    });
+
+    // Game ends once every player has completed maxTurns rounds
+    const allFinished = game.players.every(
+      (p: any) => p.turnNumber > game.maxTurns,
+    );
+    if (allFinished) {
+      let winner = game.players[0];
+      for (const p of game.players) if (p.money > winner.money) winner = p;
+      io.to(roomCode).emit("game-over", {
+        winner,
+        message: `Game Over! ${winner.name} wins with K${winner.money}!`,
       });
+      return;
+    }
 
-      // Check game over
-      if (game.turnNumber >= game.maxTurns) {
-        let winner = game.players[0];
-        for (const p of game.players) {
-          if (p.money > winner.money) winner = p;
-        }
-        io.to(roomCode).emit("game-over", {
-          winner,
-          message: `Game Over! ${winner.name} wins with K${winner.money}!`,
-        });
-        return;
-      }
+    const nextIndex = (playerIndex + 1) % game.players.length;
+    game.currentTurn = game.players[nextIndex].ID;
+    games.set(roomCode, game);
 
-      // Next turn
-      const nextIndex = (playerIndex + 1) % game.players.length;
-      game.currentTurn = game.players[nextIndex].ID;
-      games.set(roomCode, game);
-
-      io.to(roomCode).emit("turn-changed", {
-        playerId: game.currentTurn,
-        turnNumber: game.turnNumber,
-      });
-    },
-  );
+    io.to(roomCode).emit("turn-changed", { playerId: game.currentTurn });
+    console.log("SERVER emitted turn-changed:", game.currentTurn);
+  });
 
   // ====================== LEAVE GAME ======================
   socket.on("leave-game", ({ roomCode }: { roomCode: string }) => {

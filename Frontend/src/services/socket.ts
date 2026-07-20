@@ -24,14 +24,8 @@ export const startGame = (roomCode: string) => {
   socket.emit("start-game", { roomCode });
 };
 
-export const rollDice = (
-  roomCode: string,
-  playerId: string,
-  dice1: number,
-  dice2: number,
-  newPosition: number,
-) => {
-  socket.emit("roll-dice", { roomCode, playerId, dice1, dice2, newPosition });
+export const rollDice = (roomCode: string, playerId: string) => {
+  socket.emit("roll-dice", { roomCode, playerId });
 };
 
 export const leaveGame = (roomCode: string) => {

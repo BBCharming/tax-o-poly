@@ -7,7 +7,7 @@ import { setLastRoom, setPlayerName } from "../services/utils";
 
 function LandingPage() {
   const navigate = useNavigate();
-  const { name, setName, setIsHost, setID, ID } = usePlayer();
+  const { name, setName, setIsHost, setID } = usePlayer();
   const { setRoomCode, setPlayers } = useGame();
 
   useEffect(() => {

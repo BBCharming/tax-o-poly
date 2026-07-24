@@ -10,10 +10,10 @@ import GameBoard from "./pages/mainBoard.tsx";
 import { useSocketListeners } from "./services/useSocketListeners.ts";
 import { usePlayer } from "./services/states.ts";
 import { getPlayerName, getLastRoom } from "./services/utils.ts";
-import { socket, rejoinGame } from "./services/socket.ts";
+import { rejoinGame } from "./services/socket.ts";
 
 function Root() {
-  const { initializeFromStorage, ID, name } = usePlayer();
+  const { initializeFromStorage, ID } = usePlayer();
   useSocketListeners();
 
   useEffect(() => {

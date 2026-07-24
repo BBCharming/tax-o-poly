@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import { BrowserRouter, Route, Routes } from "react-router";
@@ -8,9 +8,25 @@ import { Toaster } from "sonner";
 import GameLobby from "./pages/gameLobby.tsx";
 import GameBoard from "./pages/mainBoard.tsx";
 import { useSocketListeners } from "./services/useSocketListeners.ts";
+import { usePlayer } from "./services/states.ts";
+import { getPlayerName, getLastRoom } from "./services/utils.ts";
+import { socket, rejoinGame } from "./services/socket.ts";
 
 function Root() {
+  const { initializeFromStorage, ID, name } = usePlayer();
   useSocketListeners();
+
+  useEffect(() => {
+    initializeFromStorage();
+  }, [initializeFromStorage]);
+  useEffect(() => {
+    const lastRoom = getLastRoom();
+    const storedName = getPlayerName();
+
+    if (lastRoom && storedName && ID) {
+      rejoinGame(lastRoom, ID, storedName);
+    }
+  }, [ID]);
 
   return (
     <>

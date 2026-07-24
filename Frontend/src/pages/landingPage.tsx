@@ -3,18 +3,20 @@ import { useGame, usePlayer } from "../services/states";
 import { useNavigate } from "react-router";
 import { createGameRoom, socket } from "../services/socket";
 import { useEffect } from "react";
+import { setLastRoom, setPlayerName } from "../services/utils";
 
 function LandingPage() {
   const navigate = useNavigate();
-  const { name, setName, setIsHost, setID } = usePlayer();
+  const { name, setName, setIsHost, setID, ID } = usePlayer();
   const { setRoomCode, setPlayers } = useGame();
 
   useEffect(() => {
-    // Listen for successful game creation
     socket.on("game-created", ({ roomCode, players, playerId }) => {
       setPlayers(players);
       setID(playerId);
       setRoomCode(roomCode);
+      setLastRoom(roomCode);
+      setPlayerName(name);
       navigate("/lobby");
     });
 
@@ -22,12 +24,11 @@ function LandingPage() {
       toast.error(message);
     });
 
-    // Cleanup listeners
     return () => {
       socket.off("game-created");
       socket.off("error");
     };
-  }, [navigate, setPlayers, setID, setRoomCode]);
+  }, [navigate, setPlayers, setID, setRoomCode, name]);
 
   const handleHost = () => {
     if (!name.trim()) {
@@ -35,17 +36,14 @@ function LandingPage() {
       return;
     }
 
-    // Generate room code
     const codeNumber = Math.floor(Math.random() * 9000) + 1000;
     const gameCode = `TAXOPOLY-${codeNumber}`;
 
-    // Set local state
     setRoomCode(gameCode);
     setIsHost(true);
+    setPlayerName(name.trim().toUpperCase());
 
-    // Create game on server
     createGameRoom(gameCode, {
-      ID: socket.id || "",
       name: name.trim().toUpperCase(),
       isHost: true,
     });

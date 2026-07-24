@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { getPlayerId, getPlayerName } from "./utils";
 
 export interface Player {
   id: string;
@@ -24,6 +25,7 @@ interface player {
   setPosition: (position: number) => void;
   money: number;
   setMoney: (money: number) => void;
+  initializeFromStorage: () => void;
 }
 
 interface game {
@@ -41,12 +43,14 @@ interface game {
   setTurnNumber: (turn: number) => void;
   maxTurns: number;
   setMaxTurns: (max: number) => void;
+  isReconnecting: boolean;
+  setIsReconnecting: (reconnecting: boolean) => void;
 }
 
 export const usePlayer = create<player>((set) => ({
   id: "",
   ID: "",
-  setID: (id: string) => set({ ID: id }),
+  setID: (id: string) => set({ ID: id, id: id }),
   name: "",
   setName: (name: string) => set({ name: name }),
   isHost: false,
@@ -55,6 +59,15 @@ export const usePlayer = create<player>((set) => ({
   setPosition: (position: number) => set({ position }),
   money: 1500,
   setMoney: (money: number) => set({ money }),
+  initializeFromStorage: () => {
+    const storedId = getPlayerId();
+    const storedName = getPlayerName();
+    set({
+      ID: storedId,
+      id: storedId,
+      name: storedName || "",
+    });
+  },
 }));
 
 export const useGame = create<game>((set) => ({
@@ -72,4 +85,6 @@ export const useGame = create<game>((set) => ({
   setTurnNumber: (turn) => set({ turnNumber: turn }),
   maxTurns: 12,
   setMaxTurns: (max) => set({ maxTurns: max }),
+  isReconnecting: false,
+  setIsReconnecting: (reconnecting) => set({ isReconnecting: reconnecting }),
 }));

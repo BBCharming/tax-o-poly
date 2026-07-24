@@ -3,6 +3,7 @@ import { useGame, usePlayer } from "../services/states";
 import { useNavigate } from "react-router";
 import { joinGameRoom, socket } from "../services/socket";
 import { useEffect } from "react";
+import { setPlayerName, setLastRoom } from "../services/utils";
 
 function JoinPage() {
   const navigate = useNavigate();
@@ -10,14 +11,14 @@ function JoinPage() {
   const { name, setID } = usePlayer();
 
   useEffect(() => {
-    // Listen for successful join
     socket.on("player-joined", ({ players, playerId }) => {
       setPlayers(players);
       setID(playerId);
+      setLastRoom(roomCode);
+      setPlayerName(name);
       navigate("/lobby");
     });
 
-    // Error handlers
     socket.on("game-not-found", () => {
       toast.error("Game room not found! Check the room code.");
     });
@@ -30,14 +31,13 @@ function JoinPage() {
       toast.error(message);
     });
 
-    // Cleanup
     return () => {
       socket.off("player-joined");
       socket.off("game-not-found");
       socket.off("game-full");
       socket.off("error");
     };
-  }, [navigate, setPlayers, setID]);
+  }, [navigate, setPlayers, setID, roomCode, name]);
 
   const handleJoin = () => {
     if (!roomCode.trim()) {
@@ -51,9 +51,7 @@ function JoinPage() {
       return;
     }
 
-    // Send join request to server
     joinGameRoom(roomCode, {
-      ID: socket.id || "",
       name: name.trim().toUpperCase(),
       isHost: false,
     });

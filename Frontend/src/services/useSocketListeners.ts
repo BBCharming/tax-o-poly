@@ -15,6 +15,8 @@ export const useSocketListeners = () => {
     setIsReconnecting,
     roomCode,
     setRoomCode,
+    setTreasury,
+    setQli,
   } = useGame();
   const { ID, setPosition, setIsHost } = usePlayer();
 
@@ -24,12 +26,36 @@ export const useSocketListeners = () => {
       players,
       turnNumber,
       maxTurns,
+      treasury,
+      qli,
     }: any) => {
       setPlayers(players);
       setCurrentTurn(currentTurn);
       setTurnNumber(turnNumber);
       setMaxTurns(maxTurns);
       setIsGameStarted(true);
+      if (typeof treasury === "number") setTreasury(treasury);
+      if (typeof qli === "number") setQli(qli);
+    };
+
+    // Fires when the current player lands on Income Tax. Full state
+    // resolution (modal open/close) lives in mainBoard.tsx, since it's
+    // page-specific UI — this hook only needs to exist so the event
+    // isn't left completely unlistened-to at the global level.
+    // mainBoard.tsx registers its own additional listener for the modal.
+
+    const handleTaxResolved = ({ players, newTreasury, qli }: any) => {
+      const normalized = players.map((p: any) => ({ ...p, ID: p.ID || p.id }));
+      setPlayers(normalized);
+      setTreasury(newTreasury);
+      if (typeof qli === "number") setQli(qli);
+    };
+
+    const handleCardDrawn = ({ players, newTreasury, qli }: any) => {
+      const normalized = players.map((p: any) => ({ ...p, ID: p.ID || p.id }));
+      setPlayers(normalized);
+      setTreasury(newTreasury);
+      if (typeof qli === "number") setQli(qli);
     };
 
     const handleDiceRolled = ({
@@ -90,6 +116,8 @@ export const useSocketListeners = () => {
       isGameStarted,
       turnNumber,
       maxTurns,
+      treasury,
+      qli,
     }: any) => {
       const normalizedPlayers = players.map((p: any) => ({
         ...p,
@@ -102,6 +130,8 @@ export const useSocketListeners = () => {
       setMaxTurns(maxTurns);
       setIsGameStarted(isGameStarted);
       setIsReconnecting(false);
+      if (typeof treasury === "number") setTreasury(treasury);
+      if (typeof qli === "number") setQli(qli);
 
       const currentPlayer = normalizedPlayers.find(
         (p: any) => p.ID === playerId,
@@ -162,6 +192,8 @@ export const useSocketListeners = () => {
     socket.on("host-left", handleHostLeft);
     socket.on("player-rejoined", handlePlayerRejoined);
     socket.on("rejoin-error", handleRejoinError);
+    socket.on("tax-resolved", handleTaxResolved);
+    socket.on("card-drawn", handleCardDrawn);
 
     return () => {
       socket.off("connect", handleConnect);
@@ -174,6 +206,8 @@ export const useSocketListeners = () => {
       socket.off("host-left", handleHostLeft);
       socket.off("player-rejoined", handlePlayerRejoined);
       socket.off("rejoin-error", handleRejoinError);
+      socket.off("tax-resolved", handleTaxResolved);
+      socket.off("card-drawn", handleCardDrawn);
     };
   }, [
     ID,
@@ -188,5 +222,7 @@ export const useSocketListeners = () => {
     setIsHost,
     setIsReconnecting,
     setRoomCode,
+    setTreasury,
+    setQli,
   ]);
 };

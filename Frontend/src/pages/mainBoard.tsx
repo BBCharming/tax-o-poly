@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useGame, usePlayer } from "../services/states";
 import { playerColors, playerTokens } from "../services/playerConfigs";
-import { socket, rollDice, leaveGame } from "../services/socket";
+import { socket, rollDice, leaveGame, declareTax } from "../services/socket";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
@@ -19,6 +19,8 @@ export default function GameBoard() {
     setTurnNumber,
     setCurrentDiceRoll,
     maxTurns,
+    treasury,
+    qli,
   } = useGame();
   const { ID, position, setPosition, setIsHost, setName } = usePlayer();
   const playerRound = players.find((p) => p.ID === ID)?.turnNumber ?? 1;
@@ -29,6 +31,16 @@ export default function GameBoard() {
     message: string;
   } | null>(null);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+  const [showTaxModal, setShowTaxModal] = useState(false);
+  const [awaitingDeclaration, setAwaitingDeclaration] = useState(false);
+  const [taxResult, setTaxResult] = useState<{
+    audited: boolean;
+    penalty: number;
+  } | null>(null);
+  const [cardBanner, setCardBanner] = useState<{
+    type: "CivicRisk" | "PublicGood";
+    description: string;
+  } | null>(null);
 
   const corners = {
     topLeft: { name: "GO", color: "gray" },
@@ -55,7 +67,7 @@ export default function GameBoard() {
     { name: "Mine", price: "K200", color: "brown" },
     { name: "Factory", price: "K180", color: "brown" },
     { name: "Public Good", color: "orange" },
-    { name: "Farm", price: "K140", color: "brown" },
+    { name: "Income Tax", color: "gray" },
     { name: "Port", price: "K240", color: "blue" },
   ];
 
@@ -65,7 +77,7 @@ export default function GameBoard() {
     { name: "Civic Risk", color: "orange" },
     { name: "Market", price: "K180", color: "green" },
     { name: "Library", price: "K160", color: "green" },
-    { name: "Road", price: "K200", color: "blue" },
+    { name: "Income Tax", color: "gray" },
     { name: "Public Good", color: "orange" },
     { name: "Bridge", price: "K220", color: "blue" },
   ];
@@ -74,7 +86,7 @@ export default function GameBoard() {
     { name: "Police", price: "K120", color: "teal" },
     { name: "Water", price: "K175", color: "teal" },
     { name: "Public Good", color: "orange" },
-    { name: "Power Grid", price: "K180", color: "teal" },
+    { name: "Income Tax", color: "gray" },
     { name: "School", price: "K150", color: "green" },
     { name: "Civic Risk", color: "orange" },
     { name: "Hospital", price: "K200", color: "teal" },
@@ -166,21 +178,66 @@ export default function GameBoard() {
       setGameOver({ winner, message });
     };
 
+    // Only the player who landed on Income Tax receives this (server
+    // targets it with io.to(player.socketId)), so no playerId check needed.
+    // Broadcast to the room, but only the player who actually landed
+    // on Income Tax should see the modal — everyone else just needs to
+    // silently know a declaration is pending (handled by disabling the
+    // roll button for the whole room via awaitingDeclaration below).
+    const handleTaxPrompt = ({ playerId }: any) => {
+      if (playerId === ID) {
+        setShowTaxModal(true);
+      }
+      setAwaitingDeclaration(true);
+    };
+
+    const handleTaxResolved = ({ playerId, audited, penalty }: any) => {
+      if (playerId === ID) {
+        setTaxResult({ audited, penalty });
+        setShowTaxModal(false);
+        setTimeout(() => setTaxResult(null), 3500);
+      }
+      setAwaitingDeclaration(false);
+      setIsRolling(false);
+    };
+
+    const handleCardDrawn = ({ type, description }: any) => {
+      setCardBanner({ type, description });
+      setTimeout(() => setCardBanner(null), 4000);
+    };
+
     socket.on("dice-rolled", handleDiceRolled);
     socket.on("host-left", handleHostLeft);
     socket.on("game-over", handleGameOver);
+    socket.on("tax-prompt", handleTaxPrompt);
+    socket.on("tax-resolved", handleTaxResolved);
+    socket.on("card-drawn", handleCardDrawn);
 
     return () => {
       socket.off("dice-rolled", handleDiceRolled);
       socket.off("host-left", handleHostLeft);
       socket.off("game-over", handleGameOver);
+      socket.off("tax-prompt", handleTaxPrompt);
+      socket.off("tax-resolved", handleTaxResolved);
+      socket.off("card-drawn", handleCardDrawn);
     };
-  }, []);
+  }, [ID]);
 
   const handleRollDice = () => {
-    if (isRolling || currentTurn !== ID || !isGameStarted || gameOver) return;
+    if (
+      isRolling ||
+      currentTurn !== ID ||
+      !isGameStarted ||
+      gameOver ||
+      awaitingDeclaration
+    )
+      return;
     setIsRolling(true);
     rollDice(roomCode, ID);
+  };
+
+  const handleDeclare = (choice: "full" | "under") => {
+    declareTax(roomCode, ID, choice);
   };
 
   const handleQuitGame: any = () => {
@@ -312,7 +369,7 @@ export default function GameBoard() {
 
   if (gameOver) {
     return (
-      <div className="min-h-screen bg-linear-to-br from-slate-800 via-teal-900 to-slate-900 p-4 flex items-center justify-center">
+      <div className="min-h-screen bg-linear-to-br from-[#F7F1E6] via-[#EFE7D8] to-[#E4EEF3] p-4 flex items-center justify-center">
         <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
           <h2 className="text-3xl font-bold text-center text-red-600 mb-4">
             🏆 Game Over!
@@ -322,8 +379,8 @@ export default function GameBoard() {
               {gameOver.message}
             </p>
             {gameOver.winner && (
-              <div className="mt-4 p-4 bg-yellow-50 rounded-lg border-2 border-yellow-400">
-                <p className="text-lg font-bold text-yellow-700">
+              <div className="mt-4 p-4 bg-[rgb(250,246,237)] rounded-lg border-2 border-[rgb(47,111,159)]">
+                <p className="text-lg font-bold text-[rgb(47,111,159)]">
                   Winner: {gameOver.winner.name}
                 </p>
                 <p className="text-md text-gray-600">
@@ -334,7 +391,7 @@ export default function GameBoard() {
           </div>
           <button
             onClick={() => window.location.reload()}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg transition-colors"
+            className="w-full bg-[rgb(47,111,159)] hover:bg-[rgb(37,90,130)] text-white font-bold py-3 rounded-lg transition-colors"
           >
             Play Again
           </button>
@@ -344,17 +401,17 @@ export default function GameBoard() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-800 via-teal-900 to-slate-900 p-4 flex items-center justify-center">
+    <div className="min-h-screen bg-linear-to-br from-[#F7F1E6] via-[#EFE7D8] to-[#E4EEF3] p-4 flex items-center justify-center">
       <div className="relative w-full max-w-6xl">
         {/* Top Bar */}
-        <div className="bg-[rgb(8,80,65)] rounded-t-xl px-6 py-3 mb-2">
+        <div className="bg-[rgb(47,111,159)] rounded-t-xl px-6 py-3 mb-2">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-4">
               <span className="text-[rgb(250,249,245)] font-medium text-sm">
                 Public treasury
               </span>
               <span className="text-[rgb(250,249,245)] font-medium text-sm">
-                K 4,250
+                K {treasury.toLocaleString()}
               </span>
             </div>
 
@@ -362,7 +419,7 @@ export default function GameBoard() {
               <span className="text-[rgb(250,249,245)] font-medium text-sm">
                 Month:
               </span>
-              <span className="text-amber-300 font-bold">
+              <span className="text-white font-bold">
                 {playerRound}/{maxTurns}
               </span>
             </div>
@@ -371,9 +428,7 @@ export default function GameBoard() {
               <span className="text-[rgb(250,249,245)] font-medium text-sm">
                 Current Turn:
               </span>
-              <span className="text-amber-300 font-bold">
-                {currentPlayerName}
-              </span>
+              <span className="text-white font-bold">{currentPlayerName}</span>
             </div>
 
             <div className="flex items-center gap-4">
@@ -382,9 +437,12 @@ export default function GameBoard() {
               </span>
               <div className="flex items-center gap-2">
                 <div className="w-32 h-3 bg-[rgb(38,38,36)] rounded-full border border-[rgba(222,220,209,0.3)]">
-                  <div className="h-full w-[70%] bg-[rgb(39,80,10)] rounded-full"></div>
+                  <div
+                    className="h-full bg-[rgb(70,150,190)] rounded-full transition-all duration-500"
+                    style={{ width: `${qli}%` }}
+                  ></div>
                 </div>
-                <span className="text-[rgb(194,192,182)] text-sm">70%</span>
+                <span className="text-[rgb(194,192,182)] text-sm">{qli}%</span>
               </div>
             </div>
 
@@ -401,7 +459,7 @@ export default function GameBoard() {
         {/* Main Board with Side Panel */}
         <div className="flex gap-4">
           {/* Game Board */}
-          <div className="flex-1 bg-teal-100 border-8 border-gray-800 shadow-2xl">
+          <div className="flex-1 bg-[rgb(250,246,237)] border-8 border-[rgb(51,49,44)] shadow-2xl">
             <div className="w-full flex flex-col">
               {/*
                 Board ring layout (36 spaces total, matches server BOARD_SIZE):
@@ -450,8 +508,8 @@ export default function GameBoard() {
                 </div>
 
                 {/* Center Area */}
-                <div className="flex-1 bg-teal-50 flex flex-col items-center justify-center p-8">
-                  <div className="bg-linear-to-r from-red-600 to-red-700 px-12 py-6 rounded-xl shadow-xl mb-6 border-4 border-white">
+                <div className="flex-1 bg-[rgb(235,244,250)] flex flex-col items-center justify-center p-8">
+                  <div className="bg-linear-to-r from-[#2F6F9F] to-[#1F4E73] px-12 py-6 rounded-xl shadow-xl mb-6 border-4 border-white">
                     <h1 className="text-6xl font-black text-white tracking-wider text-center">
                       TAX-OPOLY
                     </h1>
@@ -482,7 +540,7 @@ export default function GameBoard() {
                                 isCurrentPlayer
                                   ? "bg-blue-50 border-2 border-blue-300"
                                   : "bg-gray-50"
-                              } ${isTurn ? "ring-2 ring-amber-400" : ""}`}
+                              } ${isTurn ? "ring-2 ring-[rgb(47,111,159)]" : ""}`}
                             >
                               <div className="flex items-center gap-3">
                                 <div
@@ -494,11 +552,30 @@ export default function GameBoard() {
                                   {player.name}
                                   {isCurrentPlayer && " (You)"}
                                   {player.isHost && " 👑"}
+                                  {/* Compliance visibility: makes each player's tax
+                                      history visible to the whole group, since social
+                                      visibility (not just individual penalties) is what
+                                      sustains cooperation in public-goods settings. */}
+                                  {(player.auditedCount ?? 0) > 0 ? (
+                                    <span
+                                      className="ml-2 text-xs text-[rgb(140,43,43)]"
+                                      title={`Audited ${player.auditedCount} time(s)`}
+                                    >
+                                      🚩×{player.auditedCount}
+                                    </span>
+                                  ) : (
+                                    <span
+                                      className="ml-2 text-xs text-[rgb(47,111,159)]"
+                                      title="No audits so far"
+                                    >
+                                      🛡️
+                                    </span>
+                                  )}
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
                                 {isTurn && (
-                                  <span className="text-xs bg-amber-400 text-white px-2 py-1 rounded-full">
+                                  <span className="text-xs bg-[rgb(47,111,159)] text-white px-2 py-1 rounded-full">
                                     Turn
                                   </span>
                                 )}
@@ -521,32 +598,38 @@ export default function GameBoard() {
                             isRolling ||
                             currentTurn !== ID ||
                             !isGameStarted ||
-                            gameOver !== null
+                            gameOver !== null ||
+                            awaitingDeclaration
                           }
-                          className={`bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-8 py-3 rounded-lg shadow-lg transition-colors ${
+                          className={`bg-[rgb(47,111,159)] hover:bg-[rgb(37,90,130)] text-white font-bold px-8 py-3 rounded-lg shadow-lg transition-colors ${
                             isRolling ||
                             currentTurn !== ID ||
                             !isGameStarted ||
-                            gameOver !== null
+                            gameOver !== null ||
+                            awaitingDeclaration
                               ? "opacity-50 cursor-not-allowed"
                               : ""
                           }`}
                         >
-                          {isRolling ? "🎲 Rolling..." : "🎲 ROLL DICE"}
+                          {awaitingDeclaration
+                            ? "📋 Declare your tax..."
+                            : isRolling
+                              ? "🎲 Rolling..."
+                              : "🎲 ROLL DICE"}
                         </button>
                         {currentDiceRoll.length > 0 && (
-                          <div className="bg-amber-500 px-6 py-3 rounded-lg shadow-lg border-2 border-amber-600">
-                            <div className="text-white text-xs text-center font-semibold">
+                          <div className="bg-[rgb(250,246,237)] px-6 py-3 rounded-lg shadow-lg border-2 border-[rgb(47,111,159)]">
+                            <div className="text-[rgb(47,111,159)] text-xs text-center font-semibold">
                               Last roll
                             </div>
-                            <div className="text-white font-bold text-lg text-center">
+                            <div className="text-[rgb(51,49,44)] font-bold text-lg text-center">
                               {currentDiceRoll[0]} + {currentDiceRoll[1]}
                             </div>
                           </div>
                         )}
                       </div>
                       {!isGameStarted && (
-                        <p className="text-sm text-amber-600 mt-2 font-semibold">
+                        <p className="text-sm text-[rgb(47,111,159)] mt-2 font-semibold">
                           ⏳ Waiting for host to start the game...
                         </p>
                       )}
@@ -594,6 +677,74 @@ export default function GameBoard() {
           </div>
         </div>
       </div>
+
+      {/* Tax Declaration Modal — only the player who landed on Income Tax sees this */}
+      {showTaxModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl border-2 border-[rgb(191,216,232)]">
+            <h2 className="text-2xl font-bold text-center text-[rgb(47,111,159)] mb-2">
+              📋 Income Tax
+            </h2>
+            <p className="text-[rgb(51,49,44)] text-center mb-6">
+              You landed on Income Tax. Declare your income in full to
+              contribute more to the Public Treasury with no risk — or
+              under-declare to keep more for yourself, with a chance of being
+              audited.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => handleDeclare("full")}
+                className="w-full bg-[rgb(47,111,159)] hover:bg-[rgb(37,90,130)] text-white font-bold py-3 rounded-lg transition-colors"
+              >
+                Declare Full Income (K100 → Treasury)
+              </button>
+              <button
+                onClick={() => handleDeclare("under")}
+                className="w-full bg-white border-2 border-[rgb(47,111,159)] text-[rgb(47,111,159)] font-bold py-3 rounded-lg hover:bg-[rgb(233,242,248)] transition-colors"
+              >
+                Under-declare (K40 → Treasury, audit risk)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tax outcome banner — shown briefly after resolution */}
+      {taxResult && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50">
+          <div
+            className={`px-6 py-4 rounded-xl shadow-2xl border-2 font-semibold text-center ${
+              taxResult.audited
+                ? "bg-white border-[rgb(140,43,43)] text-[rgb(140,43,43)]"
+                : "bg-white border-[rgb(47,111,159)] text-[rgb(47,111,159)]"
+            }`}
+          >
+            {taxResult.audited
+              ? `🔍 Audited! You paid an extra K${taxResult.penalty} penalty and lose your next turn.`
+              : "✅ Declaration accepted — no audit this time."}
+          </div>
+        </div>
+      )}
+
+      {/* Civic Risk / Public Good card banner */}
+      {cardBanner && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50">
+          <div
+            className={`px-6 py-4 rounded-xl shadow-2xl border-2 font-semibold text-center max-w-md ${
+              cardBanner.type === "CivicRisk"
+                ? "bg-white border-[rgb(140,43,43)] text-[rgb(140,43,43)]"
+                : "bg-white border-[rgb(47,111,159)] text-[rgb(47,111,159)]"
+            }`}
+          >
+            {cardBanner.type === "CivicRisk"
+              ? "⚠️ Civic Risk"
+              : "🎁 Public Good"}
+            <p className="text-sm font-normal text-[rgb(51,49,44)] mt-1">
+              {cardBanner.description}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Quit Confirmation Modal */}
       {showQuitConfirm && (

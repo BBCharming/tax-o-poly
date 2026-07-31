@@ -74,6 +74,14 @@ export const rollDice = (roomCode: string, playerId: string) => {
   socket.emit("roll-dice", { roomCode, playerId });
 };
 
+export const declareTax = (
+  roomCode: string,
+  playerId: string,
+  choice: "full" | "under",
+) => {
+  socket.emit("declare-tax", { roomCode, playerId, choice });
+};
+
 export const leaveGame = (roomCode: string) => {
   socket.emit("leave-game", { roomCode });
   localStorage.removeItem("lastRoom");

@@ -11,6 +11,8 @@ export interface Player {
   token: string;
   color: string;
   turnNumber: number;
+  underDeclareCount?: number;
+  auditedCount?: number;
 }
 
 interface player {
@@ -45,6 +47,10 @@ interface game {
   setMaxTurns: (max: number) => void;
   isReconnecting: boolean;
   setIsReconnecting: (reconnecting: boolean) => void;
+  treasury: number;
+  setTreasury: (treasury: number) => void;
+  qli: number;
+  setQli: (qli: number) => void;
 }
 
 export const usePlayer = create<player>((set) => ({
@@ -87,4 +93,8 @@ export const useGame = create<game>((set) => ({
   setMaxTurns: (max) => set({ maxTurns: max }),
   isReconnecting: false,
   setIsReconnecting: (reconnecting) => set({ isReconnecting: reconnecting }),
+  treasury: 4250,
+  setTreasury: (treasury) => set({ treasury }),
+  qli: 50,
+  setQli: (qli) => set({ qli }),
 }));

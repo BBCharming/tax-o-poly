@@ -4,7 +4,6 @@ import { socket, rollDice, leaveGame, declareTax } from "../services/socket";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
-//This is how long the public good/civic risk banner must stay on the page
 const CARD_MODAL_MIN_SECONDS = 6;
 
 export default function GameBoard() {
@@ -33,6 +32,8 @@ export default function GameBoard() {
   const [gameOver, setGameOver] = useState<{
     winner: any;
     message: string;
+    debrief: any;
+    players: any[];
   } | null>(null);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [showTaxModal, setShowTaxModal] = useState(false);
@@ -129,8 +130,8 @@ export default function GameBoard() {
       toast.info(`${newHostName} is now the new host!`);
     };
 
-    const handleGameOver = ({ winner, message }: any) => {
-      setGameOver({ winner, message });
+    const handleGameOver = ({ winner, message, debrief, players }: any) => {
+      setGameOver({ winner, message, debrief, players });
     };
 
     const handleTaxPrompt = ({ playerId }: any) => {
@@ -347,6 +348,54 @@ export default function GameBoard() {
   const currentPlayerName =
     players.find((p) => p.id === currentTurn)?.name || "Waiting...";
 
+  const renderQliSparkline = (history: { seq: number; qli: number }[]) => {
+    const width = 600;
+    const height = 160;
+    const padding = 28;
+    const toXY = (i: number, qliValue: number) => {
+      const x = padding + (i / (history.length - 1)) * (width - padding * 2);
+      const y = height - padding - (qliValue / 100) * (height - padding * 2);
+      return [x, y];
+    };
+    const points = history.map((h, i) => toXY(i, h.qli).join(",")).join(" ");
+
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-40">
+        {[0, 25, 50, 75, 100].map((mark) => {
+          const [, y] = toXY(0, mark);
+          return (
+            <g key={mark}>
+              <line
+                x1={padding}
+                y1={y}
+                x2={width - padding}
+                y2={y}
+                stroke="rgb(222,220,209)"
+                strokeWidth={1}
+                strokeDasharray="4 4"
+              />
+              <text x={2} y={y + 4} fontSize={10} fill="rgb(140,138,130)">
+                {mark}
+              </text>
+            </g>
+          );
+        })}
+        <polyline
+          points={points}
+          fill="none"
+          stroke="rgb(47,111,159)"
+          strokeWidth={3}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        {history.map((h, i) => {
+          const [x, y] = toXY(i, h.qli);
+          return <circle key={i} cx={x} cy={y} r={3} fill="rgb(47,111,159)" />;
+        })}
+      </svg>
+    );
+  };
+
   if (boardSpaces.length < 36) {
     return (
       <div className="min-h-screen bg-linear-to-br from-[#F7F1E6] via-[#EFE7D8] to-[#E4EEF3] flex items-center justify-center">
@@ -369,33 +418,246 @@ export default function GameBoard() {
   const leftSpaces = boardSpaces.slice(28, 36).slice().reverse();
 
   if (gameOver) {
+    const { debrief, winner, players: finalPlayers } = gameOver;
+    const stats = debrief?.stats;
+    const qliChange = debrief ? debrief.finalQli - debrief.startingQli : 0;
+
+    let complianceMessage = "";
+    if (!stats || stats.totalDeclarations === 0) {
+      complianceMessage =
+        "No Income Tax declarations landed this game, but the treasury still moved — public funds shift based on more than just individual tax choices.";
+    } else if (stats.complianceRate >= 80) {
+      complianceMessage = `Your group declared in full ${stats.complianceRate}% of the time — that's high compliance, and it shows: consistent, low-risk contributions add up to more reliable public funding than occasional windfalls from under-declaring.`;
+    } else if (stats.complianceRate >= 40) {
+      complianceMessage = `Your group declared in full ${stats.complianceRate}% of the time — a mixed record. ${stats.auditedCount} under-declaration${stats.auditedCount === 1 ? "" : "s"} got caught by audit and cost more than paying honestly would have. That's the point: evasion usually isn't the good bet it looks like.`;
+    } else {
+      complianceMessage = `Your group declared in full only ${stats.complianceRate}% of the time. Widespread under-declaring shrinks the shared pool everyone depends on — and audits only ever catch some of it. The rest is a quiet loss to public services that never gets pinned on any one person.`;
+    }
+
     return (
-      <div className="min-h-screen bg-linear-to-br from-[#F7F1E6] via-[#EFE7D8] to-[#E4EEF3] p-4 flex items-center justify-center">
-        <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
-          <h2 className="text-3xl font-bold text-center text-red-600 mb-4">
-            🏆 Game Over!
-          </h2>
-          <div className="text-center mb-6">
-            <p className="text-xl font-semibold text-gray-800">
-              {gameOver.message}
+      <div className="min-h-screen bg-linear-to-br from-[#F7F1E6] via-[#EFE7D8] to-[#E4EEF3] p-4 md:p-8 flex items-center justify-center">
+        <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+          <div className="bg-linear-to-r from-[#2F6F9F] to-[#1F4E73] px-8 py-8 text-center shrink-0">
+            <p className="text-white/80 text-sm font-semibold uppercase tracking-wide mb-2">
+              Game Complete
             </p>
-            {gameOver.winner && (
-              <div className="mt-4 p-4 bg-[rgb(250,246,237)] rounded-lg border-2 border-[rgb(47,111,159)]">
-                <p className="text-lg font-bold text-[rgb(47,111,159)]">
-                  Winner: {gameOver.winner.name}
-                </p>
-                <p className="text-md text-gray-600">
-                  Money: K{gameOver.winner.money}
-                </p>
-              </div>
-            )}
+            <h1 className="text-3xl md:text-4xl font-black text-white mb-2">
+              The Debrief
+            </h1>
+            <p className="text-white/90 max-w-xl mx-auto text-sm md:text-base">
+              Twelve months of decisions — full declarations, calculated risks,
+              shared costs — shaped how your community's Quality-of-Life Index
+              moved. Here's what happened, and why it matters.
+            </p>
           </div>
-          <button
-            onClick={() => window.location.reload()}
-            className="w-full bg-[rgb(47,111,159)] hover:bg-[rgb(37,90,130)] text-white font-bold py-3 rounded-lg transition-colors"
-          >
-            Play Again
-          </button>
+
+          <div className="p-6 md:p-8 space-y-8 overflow-y-auto">
+            {/* QLI headline + trajectory */}
+            <section>
+              <div className="flex flex-wrap items-end justify-between gap-4 mb-4">
+                <div>
+                  <p className="text-sm text-gray-500 font-semibold">
+                    Quality-of-Life Index
+                  </p>
+                  <p className="text-5xl font-black text-[rgb(47,111,159)]">
+                    {debrief?.finalQli ?? qli}%
+                  </p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Started at {debrief?.startingQli ?? 50}% ·{" "}
+                    {qliChange > 0
+                      ? `up ${qliChange} points`
+                      : qliChange < 0
+                        ? `down ${Math.abs(qliChange)} points`
+                        : "unchanged"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-500 font-semibold">
+                    Public Treasury
+                  </p>
+                  <p className="text-2xl font-bold text-gray-800">
+                    K{(debrief?.finalTreasury ?? treasury).toLocaleString()}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Started at K
+                    {(debrief?.startingTreasury ?? 4250).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              {debrief?.qliHistory?.length > 1 &&
+                renderQliSparkline(debrief.qliHistory)}
+            </section>
+
+            {/* Key moments */}
+            {(debrief?.biggestDrop || debrief?.biggestGain) && (
+              <section>
+                <h2 className="text-lg font-bold text-[rgb(51,49,44)] mb-3">
+                  Key Moments
+                </h2>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {debrief.biggestDrop && (
+                    <div className="p-4 rounded-xl border-2 border-[rgb(140,43,43)] bg-[rgb(253,244,244)]">
+                      <p className="text-sm font-semibold text-[rgb(140,43,43)] mb-1">
+                        Biggest QLI drop ({debrief.biggestDrop.change}%)
+                      </p>
+                      <p className="text-sm text-gray-700">
+                        {debrief.biggestDrop.description}
+                      </p>
+                    </div>
+                  )}
+                  {debrief.biggestGain && (
+                    <div className="p-4 rounded-xl border-2 border-[rgb(47,111,159)] bg-[rgb(235,244,250)]">
+                      <p className="text-sm font-semibold text-[rgb(47,111,159)] mb-1">
+                        Biggest QLI gain (+{debrief.biggestGain.change}%)
+                      </p>
+                      <p className="text-sm text-gray-700">
+                        {debrief.biggestGain.description}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Tax compliance stats */}
+            {stats && (
+              <section>
+                <h2 className="text-lg font-bold text-[rgb(51,49,44)] mb-3">
+                  How the group handled taxes
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-200">
+                    <p className="text-2xl font-bold text-[rgb(47,111,159)]">
+                      {stats.fullCount}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Declared in full
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-200">
+                    <p className="text-2xl font-bold text-[rgb(239,159,39)]">
+                      {stats.underCleanCount + stats.auditedCount}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">Under-declared</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-200">
+                    <p className="text-2xl font-bold text-[rgb(140,43,43)]">
+                      {stats.auditedCount}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Caught by audit
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-200">
+                    <p className="text-2xl font-bold text-gray-800">
+                      {stats.complianceRate}%
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Compliance rate
+                    </p>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Full timeline */}
+            {debrief?.events?.length > 0 && (
+              <section>
+                <h2 className="text-lg font-bold text-[rgb(51,49,44)] mb-3">
+                  What happened, in order
+                </h2>
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-200">
+                  {debrief.events.map((e: any) => {
+                    const change = e.qliAfter - e.qliBefore;
+                    return (
+                      <div
+                        key={e.seq}
+                        className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-200"
+                      >
+                        <div
+                          className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${
+                            change < 0
+                              ? "bg-[rgb(140,43,43)]"
+                              : change > 0
+                                ? "bg-[rgb(47,111,159)]"
+                                : "bg-gray-400"
+                          }`}
+                        ></div>
+                        <div className="flex-1">
+                          <p className="text-sm text-gray-800">
+                            {e.description}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Month {e.turnNumber} · QLI {e.qliBefore}% →{" "}
+                            {e.qliAfter}%
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* Educational debrief */}
+            <section className="bg-[rgb(235,244,250)] rounded-xl p-6 border-2 border-[rgb(191,216,232)]">
+              <h2 className="text-lg font-bold text-[rgb(47,111,159)] mb-3">
+                Why this matters
+              </h2>
+              <p className="text-sm text-gray-700 mb-3">{complianceMessage}</p>
+              <p className="text-sm text-gray-700">
+                Taxes fund the public goods no single person could build alone —
+                clinics, schools, roads, emergency services. When enough people
+                contribute, the cost per person is small but the benefit is
+                shared by everyone, including people who couldn't otherwise
+                afford it. When compliance slips, those services don't vanish
+                all at once — the Quality-of-Life Index in this game stands in
+                for that slower, collective erosion, which is easy to miss
+                because no single missed payment feels like the cause. And as
+                this game showed with its treasury-only events, not every dip is
+                a personal compliance failure either — how well collected funds
+                are managed matters just as much as whether they were paid in
+                the first place.
+              </p>
+            </section>
+
+            {/* Final money standings — kept, but deliberately de-emphasized */}
+            <section>
+              <details>
+                <summary className="cursor-pointer text-sm font-semibold text-gray-500 hover:text-gray-700 select-none">
+                  For reference: final balances (money wasn't the point) ▾
+                </summary>
+                <div className="mt-3 space-y-2">
+                  {(finalPlayers ?? players)
+                    .slice()
+                    .sort((a: any, b: any) => b.money - a.money)
+                    .map((p: any, i: number) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between px-4 py-2 rounded-lg bg-gray-50"
+                      >
+                        <span className="text-sm text-gray-700">
+                          {i + 1}. {p.name}
+                          {winner && p.id === winner.id ? " 🏅" : ""}
+                        </span>
+                        <span className="text-sm text-gray-600">
+                          K{p.money}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </details>
+            </section>
+          </div>
+
+          <div className="p-6 border-t border-gray-200 shrink-0">
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full bg-[rgb(47,111,159)] hover:bg-[rgb(37,90,130)] text-white font-bold py-3 rounded-lg transition-colors"
+            >
+              Play Again
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -540,7 +802,6 @@ export default function GameBoard() {
                                   {player.name}
                                   {isCurrentPlayer && " (You)"}
                                   {player.isHost && " 👑"}
-
                                   {(player.auditedCount ?? 0) > 0 ? (
                                     <span
                                       className="ml-2 text-xs text-[rgb(140,43,43)]"
@@ -615,7 +876,7 @@ export default function GameBoard() {
                       </div>
                       {!isGameStarted && (
                         <p className="text-sm text-[rgb(47,111,159)] mt-2 font-semibold">
-                          ⏳ Waiting for host to start the game...
+                          Waiting for host to start the game...
                         </p>
                       )}
                       {isGameStarted && (
@@ -663,12 +924,12 @@ export default function GameBoard() {
         </div>
       </div>
 
-      {/* Tax Declaration Modal*/}
+      {/* Tax Declaration Modal — only the player who landed on Income Tax sees this */}
       {showTaxModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl border-2 border-[rgb(191,216,232)]">
             <h2 className="text-2xl font-bold text-center text-[rgb(47,111,159)] mb-2">
-              📋 Income Tax
+              Income Tax
             </h2>
             <p className="text-[rgb(51,49,44)] text-center mb-6">
               You landed on Income Tax. Declare your income in full to
@@ -694,7 +955,7 @@ export default function GameBoard() {
         </div>
       )}
 
-      {/* Tax outcome banner */}
+      {/* Tax outcome banner — shown briefly after resolution */}
       {taxResult && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50">
           <div
@@ -756,7 +1017,7 @@ export default function GameBoard() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
             <h2 className="text-2xl font-bold text-center text-red-600 mb-4">
-              ⚠️ Quit Game?
+              Quit Game?
             </h2>
             <p className="text-gray-700 text-center mb-6">
               Are you sure you want to leave the game? You will be disconnected

@@ -130,20 +130,6 @@ const AUDIT_CHANCE = 0.35;
 const AUDIT_PENALTY = 180;
 const AUDIT_SKIP_TURNS = 1;
 
-// ===================================================================
-// CARD DECKS
-//
-// Every card has an explicit `scope` so the deduction/credit rule is
-// never implicit or guessed from which fields happen to be set:
-//   "self"      — affects only the player who landed on the space.
-//   "all"       — affects every player equally, independent of the treasury.
-//   "treasury"  — affects the shared Public Treasury directly, and
-//                 therefore the QLI, WITHOUT touching any individual
-//                 player's personal savings. No one "feels" it directly,
-//                 which is the point: it models outcomes that depend on
-//                 how well the collective pool is managed, not on any
-//                 one person's compliance choice.
-// ===================================================================
 const CIVIC_RISK_CARDS = [
   {
     description:
@@ -223,6 +209,86 @@ function resolveCardEffect(game: any, player: any, card: any) {
   }
 }
 
+function recordEvent(
+  game: any,
+  entry: Omit<any, "seq" | "qliBefore" | "qliAfter">,
+  qliBefore: number,
+) {
+  const qliAfter = computeQLI(game.treasury);
+  game.eventSeq = (game.eventSeq || 0) + 1;
+  const event = {
+    seq: game.eventSeq,
+    qliBefore,
+    qliAfter,
+    ...entry,
+  };
+  game.eventLog.push(event);
+  game.qliHistory.push({
+    seq: game.eventSeq,
+    qli: qliAfter,
+    treasury: game.treasury,
+  });
+  return event;
+}
+
+function buildDebrief(game: any) {
+  const taxEvents = game.eventLog.filter((e: any) => e.type === "tax");
+  const cardEvents = game.eventLog.filter((e: any) => e.type !== "tax");
+  const fullCount = taxEvents.filter((e: any) => e.outcome === "full").length;
+  const underCleanCount = taxEvents.filter(
+    (e: any) => e.outcome === "under-clean",
+  ).length;
+  const auditedCount = taxEvents.filter(
+    (e: any) => e.outcome === "under-audited",
+  ).length;
+  const complianceRate = taxEvents.length
+    ? Math.round((fullCount / taxEvents.length) * 100)
+    : 100;
+
+  const netTreasuryFromTax = taxEvents.reduce(
+    (sum: number, e: any) => sum + e.treasuryDelta,
+    0,
+  );
+  const netTreasuryFromCards = cardEvents.reduce(
+    (sum: number, e: any) => sum + e.treasuryDelta,
+    0,
+  );
+
+  let biggestDrop: any = null;
+  let biggestGain: any = null;
+  for (const e of game.eventLog) {
+    const change = e.qliAfter - e.qliBefore;
+    if (!biggestDrop || change < biggestDrop.change)
+      biggestDrop = { ...e, change };
+    if (!biggestGain || change > biggestGain.change)
+      biggestGain = { ...e, change };
+  }
+
+  return {
+    finalQli: computeQLI(game.treasury),
+    finalTreasury: game.treasury,
+    startingQli: 50,
+    startingTreasury: BASELINE_TREASURY,
+    qliHistory: game.qliHistory,
+    events: game.eventLog,
+    stats: {
+      totalDeclarations: taxEvents.length,
+      fullCount,
+      underCleanCount,
+      auditedCount,
+      complianceRate,
+      civicRiskCount: cardEvents.filter((e: any) => e.type === "civic-risk")
+        .length,
+      publicGoodCount: cardEvents.filter((e: any) => e.type === "public-good")
+        .length,
+      netTreasuryFromTax,
+      netTreasuryFromCards,
+    },
+    biggestDrop: biggestDrop && biggestDrop.change < 0 ? biggestDrop : null,
+    biggestGain: biggestGain && biggestGain.change > 0 ? biggestGain : null,
+  };
+}
+
 const games = new Map();
 
 const findPlayerIndex = (players: any[], playerId: string) =>
@@ -244,7 +310,9 @@ function checkGameOverAndAdvance(
     for (const p of game.players) if (p.money > winner.money) winner = p;
     io.to(roomCode).emit("game-over", {
       winner,
-      message: `Game Over! ${winner.name} wins with K${winner.money}!`,
+      message: `Game Over! ${winner.name} finished with the most money (K${winner.money}).`,
+      debrief: buildDebrief(game),
+      players: game.players,
     });
     return;
   }
@@ -311,6 +379,9 @@ io.on("connection", (socket: any) => {
         treasury: 4250,
         qli: 50,
         gameWinner: null,
+        eventLog: [] as any[],
+        qliHistory: [{ seq: 0, qli: 50, treasury: 4250 }] as any[],
+        eventSeq: 0,
       };
 
       games.set(roomCode, gameData);
@@ -487,7 +558,34 @@ io.on("connection", (socket: any) => {
       const deck = isRisk ? CIVIC_RISK_CARDS : PUBLIC_GOOD_CARDS;
       const card = deck[Math.floor(Math.random() * deck.length)];
 
+      const qliBefore = computeQLI(game.treasury);
       resolveCardEffect(game, player, card);
+
+      const treasuryDelta = card.scope === "treasury" ? card.amount : 0;
+      const moneyDelta =
+        card.scope === "self" || card.scope === "all" ? card.amount : 0;
+      const scopeLabel =
+        card.scope === "treasury"
+          ? "affected the shared Public Treasury directly"
+          : card.scope === "all"
+            ? "affected every player equally"
+            : `affected ${player.name} only`;
+
+      recordEvent(
+        game,
+        {
+          turnNumber: player.turnNumber,
+          playerId,
+          playerName: player.name,
+          type: isRisk ? "civic-risk" : "public-good",
+          scope: card.scope,
+          description: `${card.description} (This ${scopeLabel}.)`,
+          moneyDelta,
+          treasuryDelta,
+        },
+        qliBefore,
+      );
+
       games.set(roomCode, game);
 
       io.to(roomCode).emit("card-drawn", {
@@ -523,23 +621,56 @@ io.on("connection", (socket: any) => {
 
       let audited = false;
       let penalty = 0;
+      const qliBefore = computeQLI(game.treasury);
+      let treasuryDelta = 0;
+      let moneyDelta = 0;
 
       if (choice === "full") {
         player.money -= FULL_TAX_AMOUNT;
         game.treasury += FULL_TAX_AMOUNT;
+        treasuryDelta = FULL_TAX_AMOUNT;
+        moneyDelta = -FULL_TAX_AMOUNT;
       } else {
         player.money -= UNDER_TAX_AMOUNT;
         game.treasury += UNDER_TAX_AMOUNT;
+        treasuryDelta = UNDER_TAX_AMOUNT;
+        moneyDelta = -UNDER_TAX_AMOUNT;
         player.underDeclareCount = (player.underDeclareCount || 0) + 1;
 
         if (Math.random() < AUDIT_CHANCE) {
           audited = true;
           penalty = AUDIT_PENALTY;
           player.money -= penalty;
+          moneyDelta -= penalty;
           player.skipTurns = (player.skipTurns || 0) + AUDIT_SKIP_TURNS;
           player.auditedCount = (player.auditedCount || 0) + 1;
         }
       }
+
+      const outcome =
+        choice === "full" ? "full" : audited ? "under-audited" : "under-clean";
+
+      const description =
+        choice === "full"
+          ? `${player.name} declared income in full, contributing K${FULL_TAX_AMOUNT} to the treasury with no risk.`
+          : audited
+            ? `${player.name} under-declared income (paid only K${UNDER_TAX_AMOUNT}) and was audited — an extra K${penalty} penalty was deducted.`
+            : `${player.name} under-declared income (paid only K${UNDER_TAX_AMOUNT}) and was not audited this time.`;
+
+      recordEvent(
+        game,
+        {
+          turnNumber: player.turnNumber,
+          playerId,
+          playerName: player.name,
+          type: "tax",
+          outcome,
+          description,
+          moneyDelta,
+          treasuryDelta,
+        },
+        qliBefore,
+      );
 
       games.set(roomCode, game);
 

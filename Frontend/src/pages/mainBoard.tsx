@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useGame, usePlayer } from "../services/states";
-import { socket, rollDice, leaveGame, declareTax } from "../services/socket";
+import {
+  socket,
+  rollDice,
+  leaveGame,
+  declareTax,
+  sendPropertyDecision,
+} from "../services/socket";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
-const CARD_MODAL_MIN_SECONDS = 6;
+const CARD_MODAL_MIN_SECONDS = 4;
 
 export default function GameBoard() {
   const navigate = useNavigate();
@@ -24,6 +30,7 @@ export default function GameBoard() {
     qli,
     boardSpaces,
     playerStyles,
+    properties,
   } = useGame();
   const { id: myId, position, setPosition, setIsHost, setName } = usePlayer();
   const playerRound = players.find((p) => p.id === myId)?.turnNumber ?? 1;
@@ -48,6 +55,21 @@ export default function GameBoard() {
   } | null>(null);
   const [cardCountdown, setCardCountdown] = useState(0);
   const cardCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [propertyPrompt, setPropertyPrompt] = useState<{
+    position: number;
+    name: string;
+    price: number;
+    rent?: number;
+    ownerName?: string;
+    mode: "invest" | "coinvest";
+  } | null>(null);
+  const [awaitingPropertyDecision, setAwaitingPropertyDecision] =
+    useState(false);
+  const [propertyResult, setPropertyResult] = useState<{
+    outcome: string;
+    amount?: number;
+    position: number;
+  } | null>(null);
 
   // Get space colors
   const getSpaceColors = (color: string) => {
@@ -120,10 +142,20 @@ export default function GameBoard() {
   };
 
   useEffect(() => {
-    const handleDiceRolled = ({ playerId }: any) => {
+    const handleDiceRolled = ({ playerId, passedGo, salaryAmount }: any) => {
       setMovingPlayer(playerId);
       setIsRolling(false);
       setTimeout(() => setMovingPlayer(null), 600);
+
+      if (passedGo) {
+        const playerName =
+          playerId === myId
+            ? "You"
+            : players.find((p) => p.id === playerId)?.name || "A player";
+        toast.success(
+          `💰 ${playerName} passed GO and collected a K${salaryAmount} salary!`,
+        );
+      }
     };
 
     const handleHostLeft = ({ newHostName }: any) => {
@@ -156,12 +188,46 @@ export default function GameBoard() {
       setCardCountdown(CARD_MODAL_MIN_SECONDS);
     };
 
+    const handlePropertyPrompt = ({
+      playerId,
+      position,
+      name,
+      price,
+      rent,
+      ownerName,
+      mode,
+    }: any) => {
+      if (playerId === myId) {
+        setPropertyPrompt({ position, name, price, rent, ownerName, mode });
+      }
+      setAwaitingPropertyDecision(true);
+    };
+
+    const handlePropertyResolved = ({
+      playerId,
+      position,
+      outcome,
+      amount,
+    }: any) => {
+      if (playerId === myId) {
+        setPropertyPrompt(null);
+      }
+      setAwaitingPropertyDecision(false);
+      setIsRolling(false);
+      if (outcome !== "skip") {
+        setPropertyResult({ outcome, amount, position });
+        setTimeout(() => setPropertyResult(null), 3500);
+      }
+    };
+
     socket.on("dice-rolled", handleDiceRolled);
     socket.on("host-left", handleHostLeft);
     socket.on("game-over", handleGameOver);
     socket.on("tax-prompt", handleTaxPrompt);
     socket.on("tax-resolved", handleTaxResolved);
     socket.on("card-drawn", handleCardDrawn);
+    socket.on("property-prompt", handlePropertyPrompt);
+    socket.on("property-resolved", handlePropertyResolved);
 
     return () => {
       socket.off("dice-rolled", handleDiceRolled);
@@ -170,8 +236,10 @@ export default function GameBoard() {
       socket.off("tax-prompt", handleTaxPrompt);
       socket.off("tax-resolved", handleTaxResolved);
       socket.off("card-drawn", handleCardDrawn);
+      socket.off("property-prompt", handlePropertyPrompt);
+      socket.off("property-resolved", handlePropertyResolved);
     };
-  }, [myId]);
+  }, [myId, players]);
 
   useEffect(() => {
     if (!cardBanner) {
@@ -205,7 +273,8 @@ export default function GameBoard() {
       currentTurn !== myId ||
       !isGameStarted ||
       gameOver ||
-      awaitingDeclaration
+      awaitingDeclaration ||
+      awaitingPropertyDecision
     )
       return;
     setIsRolling(true);
@@ -214,6 +283,13 @@ export default function GameBoard() {
 
   const handleDeclare = (choice: "full" | "under") => {
     declareTax(roomCode, myId, choice);
+  };
+
+  const handlePropertyDecision = (
+    choice: "invest" | "coinvest" | "pay-rent" | "skip",
+  ) => {
+    if (!propertyPrompt) return;
+    sendPropertyDecision(roomCode, myId, propertyPrompt.position, choice);
   };
 
   const handleQuitGame: any = () => {
@@ -302,6 +378,24 @@ export default function GameBoard() {
     isSide = false,
   ) => {
     const colors = getSpaceColors(space.color);
+    const owners: string[] =
+      spaceIndex >= 0 ? properties[spaceIndex]?.owners || [] : [];
+
+    const ownerDots = owners.length > 0 && (
+      <div className="absolute top-1 left-1 flex gap-0.5 z-10">
+        {owners.map((ownerId) => {
+          const owner = players.find((p) => p.id === ownerId);
+          const style = owner ? getPlayerStyle(owner) : null;
+          return (
+            <div
+              key={ownerId}
+              title={owner?.name || "Owner"}
+              className={`w-2.5 h-2.5 rounded-full border border-white ${style?.bg || "bg-gray-400"}`}
+            ></div>
+          );
+        })}
+      </div>
+    );
 
     if (isCorner) {
       return (
@@ -328,6 +422,7 @@ export default function GameBoard() {
         {!space.color.includes("gray") && !space.color.includes("orange") && (
           <div className={`${colors.colorBar} h-6`}></div>
         )}
+        {ownerDots}
         <div className="flex-1 flex flex-col items-center justify-center p-1">
           <div
             className={`text-xs text-center font-semibold ${space.color === "orange" ? colors.text : "text-gray-800"}`}
@@ -336,7 +431,7 @@ export default function GameBoard() {
           </div>
           {space.price && (
             <div className="text-xs text-gray-600 font-bold mt-1">
-              {space.price}
+              {owners.length > 0 ? "Owned" : space.price}
             </div>
           )}
         </div>
@@ -621,7 +716,6 @@ export default function GameBoard() {
               </p>
             </section>
 
-            {/* Final money standings — kept, but deliberately de-emphasized */}
             <section>
               <details>
                 <summary className="cursor-pointer text-sm font-semibold text-gray-500 hover:text-gray-700 select-none">
@@ -845,23 +939,27 @@ export default function GameBoard() {
                             currentTurn !== myId ||
                             !isGameStarted ||
                             gameOver !== null ||
-                            awaitingDeclaration
+                            awaitingDeclaration ||
+                            awaitingPropertyDecision
                           }
                           className={`bg-[rgb(47,111,159)] hover:bg-[rgb(37,90,130)] text-white font-bold px-8 py-3 rounded-lg shadow-lg transition-colors ${
                             isRolling ||
                             currentTurn !== myId ||
                             !isGameStarted ||
                             gameOver !== null ||
-                            awaitingDeclaration
+                            awaitingDeclaration ||
+                            awaitingPropertyDecision
                               ? "opacity-50 cursor-not-allowed"
                               : ""
                           }`}
                         >
                           {awaitingDeclaration
                             ? "📋 Declare your tax..."
-                            : isRolling
-                              ? "🎲 Rolling..."
-                              : "🎲 ROLL DICE"}
+                            : awaitingPropertyDecision
+                              ? "🏗️ Property decision pending..."
+                              : isRolling
+                                ? "🎲 Rolling..."
+                                : "🎲 ROLL DICE"}
                         </button>
                         {currentDiceRoll.length > 0 && (
                           <div className="bg-[rgb(250,246,237)] px-6 py-3 rounded-lg shadow-lg border-2 border-[rgb(47,111,159)]">
@@ -876,7 +974,7 @@ export default function GameBoard() {
                       </div>
                       {!isGameStarted && (
                         <p className="text-sm text-[rgb(47,111,159)] mt-2 font-semibold">
-                          Waiting for host to start the game...
+                          ⏳ Waiting for host to start the game...
                         </p>
                       )}
                       {isGameStarted && (
@@ -929,7 +1027,7 @@ export default function GameBoard() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl border-2 border-[rgb(191,216,232)]">
             <h2 className="text-2xl font-bold text-center text-[rgb(47,111,159)] mb-2">
-              Income Tax
+              📋 Income Tax
             </h2>
             <p className="text-[rgb(51,49,44)] text-center mb-6">
               You landed on Income Tax. Declare your income in full to
@@ -955,7 +1053,6 @@ export default function GameBoard() {
         </div>
       )}
 
-      {/* Tax outcome banner — shown briefly after resolution */}
       {taxResult && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50">
           <div
@@ -1008,6 +1105,79 @@ export default function GameBoard() {
             >
               {cardCountdown > 0 ? `Got it (${cardCountdown}s)` : "Got it"}
             </button>
+          </div>
+        </div>
+      )}
+
+      {propertyPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl border-2 border-[rgb(151,196,89)]">
+            <h2 className="text-2xl font-bold text-center text-[rgb(39,80,10)] mb-2">
+              🏗️ {propertyPrompt.name}
+            </h2>
+            {propertyPrompt.mode === "invest" ? (
+              <>
+                <p className="text-[rgb(51,49,44)] text-center mb-6">
+                  Nobody has invested in {propertyPrompt.name} yet. Put in K
+                  {propertyPrompt.price} to fund it and become its owner — every
+                  other player who lands here afterwards will pay you a small
+                  rent (taxed by the Treasury).
+                </p>
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={() => handlePropertyDecision("invest")}
+                    className="w-full bg-[rgb(39,80,10)] hover:bg-[rgb(31,64,8)] text-white font-bold py-3 rounded-lg transition-colors"
+                  >
+                    Invest K{propertyPrompt.price} (become owner)
+                  </button>
+                  <button
+                    onClick={() => handlePropertyDecision("skip")}
+                    className="w-full bg-white border-2 border-gray-300 text-gray-600 font-bold py-3 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Skip for now
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-[rgb(51,49,44)] text-center mb-6">
+                  {propertyPrompt.ownerName} already owns {propertyPrompt.name}.
+                  You can invest together for K{propertyPrompt.price} to become
+                  a joint owner (this raises the rent, split between the two of
+                  you from now on) — or pay the current rent of K
+                  {propertyPrompt.rent} and move on.
+                </p>
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={() => handlePropertyDecision("coinvest")}
+                    className="w-full bg-[rgb(39,80,10)] hover:bg-[rgb(31,64,8)] text-white font-bold py-3 rounded-lg transition-colors"
+                  >
+                    Invest together (K{propertyPrompt.price})
+                  </button>
+                  <button
+                    onClick={() => handlePropertyDecision("pay-rent")}
+                    className="w-full bg-white border-2 border-[rgb(140,43,43)] text-[rgb(140,43,43)] font-bold py-3 rounded-lg hover:bg-[rgb(253,244,244)] transition-colors"
+                  >
+                    Pay rent instead (K{propertyPrompt.rent})
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Property outcome banner — shown briefly to everyone after a
+          property decision resolves (invest, co-invest, or rent paid). */}
+      {propertyResult && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50">
+          <div className="px-6 py-4 rounded-xl shadow-2xl border-2 bg-white border-[rgb(39,80,10)] text-[rgb(39,80,10)] font-semibold text-center">
+            {propertyResult.outcome === "invest" &&
+              `🏗️ New investment! K${propertyResult.amount} funded into the Public Treasury.`}
+            {propertyResult.outcome === "coinvest" &&
+              `🤝 Joint investment! K${propertyResult.amount} added — rent is now shared between the two owners.`}
+            {propertyResult.outcome === "rent" &&
+              `💵 Rent paid: K${propertyResult.amount} (Treasury took its share as income tax).`}
           </div>
         </div>
       )}

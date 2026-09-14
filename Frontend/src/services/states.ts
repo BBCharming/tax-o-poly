@@ -62,12 +62,22 @@ interface game {
   setTreasury: (treasury: number) => void;
   qli: number;
   setQli: (qli: number) => void;
+  // Board layout + player visual styles, streamed once from the server
+  // via "board-config" so the client never keeps its own copy of the
+  // board that could drift out of sync with the server's game logic.
   boardSpaces: BoardSpace[];
   setBoardSpaces: (spaces: BoardSpace[]) => void;
   boardSize: number;
   setBoardSize: (size: number) => void;
   playerStyles: PlayerStyle[];
   setPlayerStyles: (styles: PlayerStyle[]) => void;
+  // Property ownership, keyed by board position. Streamed from the
+  // server (game-started / player-rejoined / property-resolved) —
+  // the client never decides who owns what, only displays it.
+  properties: Record<number, { owners: string[]; investment: number }>;
+  setProperties: (
+    properties: Record<number, { owners: string[]; investment: number }>,
+  ) => void;
 }
 
 export const usePlayer = create<player>((set) => ({
@@ -118,4 +128,6 @@ export const useGame = create<game>((set) => ({
   setBoardSize: (boardSize) => set({ boardSize }),
   playerStyles: [],
   setPlayerStyles: (playerStyles) => set({ playerStyles }),
+  properties: {},
+  setProperties: (properties) => set({ properties }),
 }));

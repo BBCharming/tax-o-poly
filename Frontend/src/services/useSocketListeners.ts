@@ -20,6 +20,7 @@ export const useSocketListeners = () => {
     setBoardSpaces,
     setBoardSize,
     setPlayerStyles,
+    setProperties,
   } = useGame();
   const { id, setPosition, setIsHost } = usePlayer();
 
@@ -40,6 +41,7 @@ export const useSocketListeners = () => {
       spaces,
       boardSize,
       playerStyles,
+      properties,
     }: any) => {
       setPlayers(players);
       setCurrentTurn(currentTurn);
@@ -51,6 +53,7 @@ export const useSocketListeners = () => {
       if (spaces) setBoardSpaces(spaces);
       if (boardSize) setBoardSize(boardSize);
       if (playerStyles) setPlayerStyles(playerStyles);
+      if (properties) setProperties(properties);
     };
 
     const handleTaxResolved = ({ players, newTreasury, qli }: any) => {
@@ -65,25 +68,25 @@ export const useSocketListeners = () => {
       if (typeof qli === "number") setQli(qli);
     };
 
-    const handleDiceRolled = ({
-      playerId,
-      dice1,
-      dice2,
-      newPosition,
-      playerTurnNumber,
+    const handlePropertyResolved = ({
+      players,
+      properties,
+      newTreasury,
+      qli,
     }: any) => {
+      if (players) setPlayers(players);
+      if (properties) setProperties(properties);
+      if (typeof newTreasury === "number") setTreasury(newTreasury);
+      if (typeof qli === "number") setQli(qli);
+    };
+
+    const handleDiceRolled = ({ dice1, dice2, players }: any) => {
       setCurrentDiceRoll([dice1, dice2]);
-
-      const updated = useGame
-        .getState()
-        .players.map((p) =>
-          p.id === playerId
-            ? { ...p, position: newPosition, turnNumber: playerTurnNumber }
-            : p,
-        );
-      setPlayers(updated);
-
-      if (playerId === id) setPosition(newPosition);
+      if (players) {
+        setPlayers(players);
+        const currentPlayer = players.find((p: any) => p.id === id);
+        if (currentPlayer) setPosition(currentPlayer.position);
+      }
     };
 
     const handleTurnChanged = ({ playerId }: any) => {
@@ -124,6 +127,7 @@ export const useSocketListeners = () => {
       spaces,
       boardSize,
       playerStyles,
+      properties,
     }: any) => {
       setPlayers(players);
       setCurrentTurn(currentTurn);
@@ -136,6 +140,7 @@ export const useSocketListeners = () => {
       if (spaces) setBoardSpaces(spaces);
       if (boardSize) setBoardSize(boardSize);
       if (playerStyles) setPlayerStyles(playerStyles);
+      if (properties) setProperties(properties);
 
       const currentPlayer = players.find((p: any) => p.id === playerId);
       if (currentPlayer) {
@@ -186,6 +191,7 @@ export const useSocketListeners = () => {
     socket.on("rejoin-error", handleRejoinError);
     socket.on("tax-resolved", handleTaxResolved);
     socket.on("card-drawn", handleCardDrawn);
+    socket.on("property-resolved", handlePropertyResolved);
 
     return () => {
       socket.off("connect", handleConnect);
@@ -201,6 +207,7 @@ export const useSocketListeners = () => {
       socket.off("rejoin-error", handleRejoinError);
       socket.off("tax-resolved", handleTaxResolved);
       socket.off("card-drawn", handleCardDrawn);
+      socket.off("property-resolved", handlePropertyResolved);
     };
   }, [
     id,
@@ -220,5 +227,6 @@ export const useSocketListeners = () => {
     setBoardSpaces,
     setBoardSize,
     setPlayerStyles,
+    setProperties,
   ]);
 };

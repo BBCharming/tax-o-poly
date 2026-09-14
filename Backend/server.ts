@@ -52,44 +52,53 @@ const PLAYER_STYLES = [
   },
 ];
 
-// BOARD LAYOUT
 const BOARD_SPACES = [
   /* 0  */ { name: "GO", color: "gray", kind: "corner" },
-  /* 1  */ { name: "Airport", price: "K260", color: "blue" },
+  /* 1  */ { name: "Airport", price: "K260", color: "blue", kind: "property" },
   /* 2  */ { name: "Civic Risk", color: "orange", kind: "civic-risk" },
-  /* 3  */ { name: "Court", price: "K220", color: "teal" },
-  /* 4  */ { name: "Fire Station", price: "K200", color: "teal" },
+  /* 3  */ { name: "Court", price: "K220", color: "teal", kind: "property" },
+  /* 4  */ {
+    name: "Fire Station",
+    price: "K200",
+    color: "teal",
+    kind: "property",
+  },
   /* 5  */ { name: "Income Tax", color: "gray", kind: "income-tax" },
-  /* 6  */ { name: "University", price: "K180", color: "green" },
+  /* 6  */ {
+    name: "University",
+    price: "K180",
+    color: "green",
+    kind: "property",
+  },
   /* 7  */ { name: "Public Good", color: "orange", kind: "public-good" },
-  /* 8  */ { name: "Stadium", price: "K160", color: "green" },
+  /* 8  */ { name: "Stadium", price: "K160", color: "green", kind: "property" },
   /* 9  */ { name: "Free Parking", color: "gray", kind: "corner" },
-  /* 10 */ { name: "Clinic", price: "K120", color: "blue" },
-  /* 11 */ { name: "School", price: "K160", color: "green" },
+  /* 10 */ { name: "Clinic", price: "K120", color: "blue", kind: "property" },
+  /* 11 */ { name: "School", price: "K160", color: "green", kind: "property" },
   /* 12 */ { name: "Civic Risk", color: "orange", kind: "civic-risk" },
-  /* 13 */ { name: "Mine", price: "K200", color: "brown" },
-  /* 14 */ { name: "Factory", price: "K180", color: "brown" },
+  /* 13 */ { name: "Mine", price: "K200", color: "brown", kind: "property" },
+  /* 14 */ { name: "Factory", price: "K180", color: "brown", kind: "property" },
   /* 15 */ { name: "Public Good", color: "orange", kind: "public-good" },
   /* 16 */ { name: "Income Tax", color: "gray", kind: "income-tax" },
-  /* 17 */ { name: "Port", price: "K240", color: "blue" },
+  /* 17 */ { name: "Port", price: "K240", color: "blue", kind: "property" },
   /* 18 */ { name: "Audit Lock!", color: "red", kind: "corner" },
-  /* 19 */ { name: "Bridge", price: "K220", color: "blue" },
+  /* 19 */ { name: "Bridge", price: "K220", color: "blue", kind: "property" },
   /* 20 */ { name: "Public Good", color: "orange", kind: "public-good" },
   /* 21 */ { name: "Income Tax", color: "gray", kind: "income-tax" },
-  /* 22 */ { name: "Library", price: "K160", color: "green" },
-  /* 23 */ { name: "Market", price: "K180", color: "green" },
+  /* 22 */ { name: "Library", price: "K160", color: "green", kind: "property" },
+  /* 23 */ { name: "Market", price: "K180", color: "green", kind: "property" },
   /* 24 */ { name: "Civic Risk", color: "orange", kind: "civic-risk" },
-  /* 25 */ { name: "Park", price: "K140", color: "green" },
-  /* 26 */ { name: "Sewer", price: "K100", color: "teal" },
+  /* 25 */ { name: "Park", price: "K140", color: "green", kind: "property" },
+  /* 26 */ { name: "Sewer", price: "K100", color: "teal", kind: "property" },
   /* 27 */ { name: "Tax Office", color: "gray", kind: "corner" },
   /* 28 */ { name: "Free Pass", color: "gray" },
-  /* 29 */ { name: "Hospital", price: "K200", color: "teal" },
+  /* 29 */ { name: "Hospital", price: "K200", color: "teal", kind: "property" },
   /* 30 */ { name: "Civic Risk", color: "orange", kind: "civic-risk" },
-  /* 31 */ { name: "School", price: "K150", color: "green" },
+  /* 31 */ { name: "School", price: "K150", color: "green", kind: "property" },
   /* 32 */ { name: "Income Tax", color: "gray", kind: "income-tax" },
   /* 33 */ { name: "Public Good", color: "orange", kind: "public-good" },
-  /* 34 */ { name: "Water", price: "K175", color: "teal" },
-  /* 35 */ { name: "Police", price: "K120", color: "teal" },
+  /* 34 */ { name: "Water", price: "K175", color: "teal", kind: "property" },
+  /* 35 */ { name: "Police", price: "K120", color: "teal", kind: "property" },
 ];
 
 if (BOARD_SPACES.length !== BOARD_SIZE) {
@@ -107,10 +116,29 @@ const positionsOfKind = (kind: string) =>
 const INCOME_TAX_POSITIONS = positionsOfKind("income-tax");
 const CIVIC_RISK_POSITIONS = positionsOfKind("civic-risk");
 const PUBLIC_GOOD_POSITIONS = positionsOfKind("public-good");
+const PROPERTY_POSITIONS = positionsOfKind("property");
+
+const priceOf = (position: number): number =>
+  parseInt(String(BOARD_SPACES[position].price).replace("K", ""), 10);
+
+const GO_SALARY = 1500;
+
+// PROPERTY INVESTMENT & RENT
+const RENT_RATE = 0.15;
+const RENT_INCOME_TAX_RATE = 0.2;
+const MAX_CO_OWNERS = 2;
+
+const computeRent = (investment: number) =>
+  Math.max(5, Math.round(investment * RENT_RATE));
+
+const ownerNames = (owners: string[], players: any[]) =>
+  owners
+    .map((id) => players.find((p) => p.id === id)?.name || "a player")
+    .join(" & ");
 
 // QUALITY OF LIFE INDEX (QLI)
 const BASELINE_TREASURY = 4250;
-const QLI_SENSITIVITY = 40; // K40 of treasury change moves QLI by 1 point
+const QLI_SENSITIVITY = 40;
 
 function computeQLI(treasury: number): number {
   const raw = 50 + (treasury - BASELINE_TREASURY) / QLI_SENSITIVITY;
@@ -119,7 +147,6 @@ function computeQLI(treasury: number): number {
 
 // ===================================================================
 // TAX DECLARATION CONFIG
-//
 // Fairness rule: declaring in full should not be a "sucker's payoff."
 // Expected cost of under-declaring = UNDER_TAX_AMOUNT + AUDIT_CHANCE * AUDIT_PENALTY
 //   = 40 + 0.35 * 180 = 103
@@ -177,6 +204,7 @@ const PUBLIC_GOOD_CARDS = [
     scope: "self",
     amount: 0,
   },
+
   {
     description:
       "National Health Insurance levy — every player contributes K15 to a shared clinic fund.",
@@ -209,6 +237,7 @@ function resolveCardEffect(game: any, player: any, card: any) {
   }
 }
 
+// GAME EVENT LOG
 function recordEvent(
   game: any,
   entry: Omit<any, "seq" | "qliBefore" | "qliAfter">,
@@ -233,7 +262,14 @@ function recordEvent(
 
 function buildDebrief(game: any) {
   const taxEvents = game.eventLog.filter((e: any) => e.type === "tax");
-  const cardEvents = game.eventLog.filter((e: any) => e.type !== "tax");
+  const cardEvents = game.eventLog.filter(
+    (e: any) => e.type === "civic-risk" || e.type === "public-good",
+  );
+  const investmentEvents = game.eventLog.filter(
+    (e: any) => e.type === "investment",
+  );
+  const rentEvents = game.eventLog.filter((e: any) => e.type === "rent");
+
   const fullCount = taxEvents.filter((e: any) => e.outcome === "full").length;
   const underCleanCount = taxEvents.filter(
     (e: any) => e.outcome === "under-clean",
@@ -250,6 +286,14 @@ function buildDebrief(game: any) {
     0,
   );
   const netTreasuryFromCards = cardEvents.reduce(
+    (sum: number, e: any) => sum + e.treasuryDelta,
+    0,
+  );
+  const netTreasuryFromInvestment = investmentEvents.reduce(
+    (sum: number, e: any) => sum + e.treasuryDelta,
+    0,
+  );
+  const netTreasuryFromRentTax = rentEvents.reduce(
     (sum: number, e: any) => sum + e.treasuryDelta,
     0,
   );
@@ -281,8 +325,12 @@ function buildDebrief(game: any) {
         .length,
       publicGoodCount: cardEvents.filter((e: any) => e.type === "public-good")
         .length,
+      propertiesInvested: investmentEvents.length,
+      rentPayments: rentEvents.length,
       netTreasuryFromTax,
       netTreasuryFromCards,
+      netTreasuryFromInvestment,
+      netTreasuryFromRentTax,
     },
     biggestDrop: biggestDrop && biggestDrop.change < 0 ? biggestDrop : null,
     biggestGain: biggestGain && biggestGain.change > 0 ? biggestGain : null,
@@ -382,6 +430,16 @@ io.on("connection", (socket: any) => {
         eventLog: [] as any[],
         qliHistory: [{ seq: 0, qli: 50, treasury: 4250 }] as any[],
         eventSeq: 0,
+        properties: PROPERTY_POSITIONS.reduce(
+          (
+            acc: Record<number, { owners: string[]; investment: number }>,
+            pos,
+          ) => {
+            acc[pos] = { owners: [], investment: 0 };
+            return acc;
+          },
+          {},
+        ),
       };
 
       games.set(roomCode, gameData);
@@ -488,6 +546,7 @@ io.on("connection", (socket: any) => {
         spaces: BOARD_SPACES,
         boardSize: BOARD_SIZE,
         playerStyles: PLAYER_STYLES,
+        properties: game.properties,
       });
 
       io.to(roomCode).emit("players-updated", game.players);
@@ -514,6 +573,7 @@ io.on("connection", (socket: any) => {
       spaces: BOARD_SPACES,
       boardSize: BOARD_SIZE,
       playerStyles: PLAYER_STYLES,
+      properties: game.properties,
     });
   });
 
@@ -530,10 +590,15 @@ io.on("connection", (socket: any) => {
 
     const dice1 = Math.floor(Math.random() * 6) + 1;
     const dice2 = Math.floor(Math.random() * 6) + 1;
-    const newPosition = (player.position + dice1 + dice2) % BOARD_SIZE;
+    const rawPosition = player.position + dice1 + dice2;
+    const newPosition = rawPosition % BOARD_SIZE;
+    const passedGo = rawPosition >= BOARD_SIZE;
 
     player.position = newPosition;
     player.turnNumber += 1;
+    if (passedGo) {
+      player.money += GO_SALARY;
+    }
 
     games.set(roomCode, game);
 
@@ -543,6 +608,9 @@ io.on("connection", (socket: any) => {
       dice2,
       newPosition,
       playerTurnNumber: player.turnNumber,
+      passedGo,
+      salaryAmount: passedGo ? GO_SALARY : 0,
+      players: game.players,
     });
 
     if (INCOME_TAX_POSITIONS.includes(newPosition)) {
@@ -598,8 +666,202 @@ io.on("connection", (socket: any) => {
       });
     }
 
+    if (PROPERTY_POSITIONS.includes(newPosition)) {
+      const property = game.properties[newPosition];
+      const space = BOARD_SPACES[newPosition];
+
+      if (property.owners.includes(playerId)) {
+        // Landing on your own investment: nothing to pay, nothing to prompt.
+        // Fall through to the normal turn advance below.
+      } else if (property.owners.length === 0) {
+        io.to(roomCode).emit("property-prompt", {
+          playerId,
+          position: newPosition,
+          name: space.name,
+          price: priceOf(newPosition),
+          mode: "invest",
+        });
+        return;
+      } else if (property.owners.length < MAX_CO_OWNERS) {
+        io.to(roomCode).emit("property-prompt", {
+          playerId,
+          position: newPosition,
+          name: space.name,
+          price: priceOf(newPosition),
+          rent: computeRent(property.investment),
+          ownerName: ownerNames(property.owners, game.players),
+          mode: "coinvest",
+        });
+        return;
+      } else {
+        const qliBefore = computeQLI(game.treasury);
+        const rent = computeRent(property.investment);
+        const treasuryShare = Math.round(rent * RENT_INCOME_TAX_RATE);
+        const ownerShare = rent - treasuryShare;
+
+        player.money -= rent;
+        game.treasury += treasuryShare;
+        const perOwner = Math.floor(ownerShare / property.owners.length);
+        for (const ownerId of property.owners) {
+          const owner = game.players.find((p: any) => p.id === ownerId);
+          if (owner) owner.money += perOwner;
+        }
+
+        recordEvent(
+          game,
+          {
+            turnNumber: player.turnNumber,
+            playerId,
+            playerName: player.name,
+            type: "rent",
+            description: `${player.name} paid K${rent} rent at ${space.name} to ${ownerNames(property.owners, game.players)} (Treasury collected K${treasuryShare} income tax on that rent.)`,
+            moneyDelta: -rent,
+            treasuryDelta: treasuryShare,
+          },
+          qliBefore,
+        );
+
+        games.set(roomCode, game);
+        io.to(roomCode).emit("property-resolved", {
+          playerId,
+          position: newPosition,
+          outcome: "rent",
+          rent,
+          players: game.players,
+          properties: game.properties,
+          newTreasury: game.treasury,
+          qli: computeQLI(game.treasury),
+        });
+      }
+    }
+
     checkGameOverAndAdvance(roomCode, game, playerIndex);
   });
+
+  socket.on(
+    "property-decision",
+    ({
+      roomCode,
+      playerId,
+      position,
+      choice,
+    }: {
+      roomCode: string;
+      playerId: string;
+      position: number;
+      choice: "invest" | "coinvest" | "pay-rent" | "skip";
+    }) => {
+      const game = games.get(roomCode);
+      if (!game || !game.isGameStarted) return;
+      if (game.currentTurn !== playerId) return;
+
+      const playerIndex = findPlayerIndex(game.players, playerId);
+      if (playerIndex === -1) return;
+      const player = game.players[playerIndex];
+      const property = game.properties[position];
+      const space = BOARD_SPACES[position];
+      if (!property || !space) return;
+
+      const qliBefore = computeQLI(game.treasury);
+      let outcome: "invest" | "coinvest" | "rent" | "skip" = "skip";
+      let amount = 0;
+
+      if (choice === "invest" && property.owners.length === 0) {
+        const price = priceOf(position);
+        player.money -= price;
+        game.treasury += price;
+        property.owners = [playerId];
+        property.investment = price;
+        outcome = "invest";
+        amount = price;
+
+        recordEvent(
+          game,
+          {
+            turnNumber: player.turnNumber,
+            playerId,
+            playerName: player.name,
+            type: "investment",
+            description: `${player.name} invested K${price} in ${space.name}, funding it into the Public Treasury and becoming its sole owner.`,
+            moneyDelta: -price,
+            treasuryDelta: price,
+          },
+          qliBefore,
+        );
+      } else if (
+        choice === "coinvest" &&
+        property.owners.length === 1 &&
+        property.owners.length < MAX_CO_OWNERS
+      ) {
+        const price = priceOf(position);
+        const existingOwnerName = ownerNames(property.owners, game.players);
+        player.money -= price;
+        game.treasury += price;
+        property.owners = [...property.owners, playerId];
+        property.investment += price;
+        outcome = "coinvest";
+        amount = price;
+
+        recordEvent(
+          game,
+          {
+            turnNumber: player.turnNumber,
+            playerId,
+            playerName: player.name,
+            type: "investment",
+            scope: "joint",
+            description: `${player.name} invested K${price} to co-own ${space.name} alongside ${existingOwnerName} — the extra funding raises the rent, now split between the two owners.`,
+            moneyDelta: -price,
+            treasuryDelta: price,
+          },
+          qliBefore,
+        );
+      } else if (choice === "pay-rent" && property.owners.length >= 1) {
+        const rent = computeRent(property.investment);
+        const treasuryShare = Math.round(rent * RENT_INCOME_TAX_RATE);
+        const ownerShare = rent - treasuryShare;
+        const perOwner = Math.floor(ownerShare / property.owners.length);
+
+        player.money -= rent;
+        game.treasury += treasuryShare;
+        for (const ownerId of property.owners) {
+          const owner = game.players.find((p: any) => p.id === ownerId);
+          if (owner) owner.money += perOwner;
+        }
+        outcome = "rent";
+        amount = rent;
+
+        recordEvent(
+          game,
+          {
+            turnNumber: player.turnNumber,
+            playerId,
+            playerName: player.name,
+            type: "rent",
+            description: `${player.name} paid K${rent} rent at ${space.name} to ${ownerNames(property.owners, game.players)} (Treasury collected K${treasuryShare} income tax on that rent.)`,
+            moneyDelta: -rent,
+            treasuryDelta: treasuryShare,
+          },
+          qliBefore,
+        );
+      }
+
+      games.set(roomCode, game);
+
+      io.to(roomCode).emit("property-resolved", {
+        playerId,
+        position,
+        outcome,
+        amount,
+        players: game.players,
+        properties: game.properties,
+        newTreasury: game.treasury,
+        qli: computeQLI(game.treasury),
+      });
+
+      checkGameOverAndAdvance(roomCode, game, playerIndex);
+    },
+  );
 
   socket.on(
     "declare-tax",

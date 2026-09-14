@@ -82,6 +82,15 @@ export const declareTax = (
   socket.emit("declare-tax", { roomCode, playerId, choice });
 };
 
+export const sendPropertyDecision = (
+  roomCode: string,
+  playerId: string,
+  position: number,
+  choice: "invest" | "coinvest" | "pay-rent" | "skip",
+) => {
+  socket.emit("property-decision", { roomCode, playerId, position, choice });
+};
+
 export const leaveGame = (roomCode: string) => {
   socket.emit("leave-game", { roomCode });
   localStorage.removeItem("lastRoom");

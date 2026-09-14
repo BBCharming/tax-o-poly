@@ -17,10 +17,19 @@ export const useSocketListeners = () => {
     setRoomCode,
     setTreasury,
     setQli,
+    setBoardSpaces,
+    setBoardSize,
+    setPlayerStyles,
   } = useGame();
-  const { ID, setPosition, setIsHost } = usePlayer();
+  const { id, setPosition, setIsHost } = usePlayer();
 
   useEffect(() => {
+    const handleBoardConfig = ({ spaces, boardSize, playerStyles }: any) => {
+      setBoardSpaces(spaces);
+      setBoardSize(boardSize);
+      setPlayerStyles(playerStyles);
+    };
+
     const handleGameStarted = ({
       currentTurn,
       players,
@@ -28,6 +37,9 @@ export const useSocketListeners = () => {
       maxTurns,
       treasury,
       qli,
+      spaces,
+      boardSize,
+      playerStyles,
     }: any) => {
       setPlayers(players);
       setCurrentTurn(currentTurn);
@@ -36,24 +48,19 @@ export const useSocketListeners = () => {
       setIsGameStarted(true);
       if (typeof treasury === "number") setTreasury(treasury);
       if (typeof qli === "number") setQli(qli);
+      if (spaces) setBoardSpaces(spaces);
+      if (boardSize) setBoardSize(boardSize);
+      if (playerStyles) setPlayerStyles(playerStyles);
     };
 
-    // Fires when the current player lands on Income Tax. Full state
-    // resolution (modal open/close) lives in mainBoard.tsx, since it's
-    // page-specific UI — this hook only needs to exist so the event
-    // isn't left completely unlistened-to at the global level.
-    // mainBoard.tsx registers its own additional listener for the modal.
-
     const handleTaxResolved = ({ players, newTreasury, qli }: any) => {
-      const normalized = players.map((p: any) => ({ ...p, ID: p.ID || p.id }));
-      setPlayers(normalized);
+      setPlayers(players);
       setTreasury(newTreasury);
       if (typeof qli === "number") setQli(qli);
     };
 
     const handleCardDrawn = ({ players, newTreasury, qli }: any) => {
-      const normalized = players.map((p: any) => ({ ...p, ID: p.ID || p.id }));
-      setPlayers(normalized);
+      setPlayers(players);
       setTreasury(newTreasury);
       if (typeof qli === "number") setQli(qli);
     };
@@ -70,13 +77,13 @@ export const useSocketListeners = () => {
       const updated = useGame
         .getState()
         .players.map((p) =>
-          p.ID === playerId
+          p.id === playerId
             ? { ...p, position: newPosition, turnNumber: playerTurnNumber }
             : p,
         );
       setPlayers(updated);
 
-      if (playerId === ID) setPosition(newPosition);
+      if (playerId === id) setPosition(newPosition);
     };
 
     const handleTurnChanged = ({ playerId }: any) => {
@@ -84,13 +91,9 @@ export const useSocketListeners = () => {
     };
 
     const handlePlayersUpdated = (updatedPlayers: any) => {
-      const normalized = updatedPlayers.map((p: any) => ({
-        ...p,
-        ID: p.ID || p.id,
-      }));
-      setPlayers(normalized);
+      setPlayers(updatedPlayers);
 
-      const currentPlayer = normalized.find((p: any) => p.ID === ID);
+      const currentPlayer = updatedPlayers.find((p: any) => p.id === id);
       if (currentPlayer) {
         setPosition(currentPlayer.position);
         setIsHost(currentPlayer.isHost);
@@ -98,13 +101,13 @@ export const useSocketListeners = () => {
     };
 
     const handlePlayerJoined = ({ players }: any) => {
-      setPlayers(players.map((p: any) => ({ ...p, ID: p.ID || p.id })));
+      setPlayers(players);
     };
 
     const handleHostLeft = ({ newHost }: any) => {
       const updated = useGame.getState().players.map((p) => ({
         ...p,
-        isHost: p.ID === newHost,
+        isHost: p.id === newHost,
       }));
       setPlayers(updated);
     };
@@ -118,13 +121,11 @@ export const useSocketListeners = () => {
       maxTurns,
       treasury,
       qli,
+      spaces,
+      boardSize,
+      playerStyles,
     }: any) => {
-      const normalizedPlayers = players.map((p: any) => ({
-        ...p,
-        ID: p.ID || p.id,
-      }));
-
-      setPlayers(normalizedPlayers);
+      setPlayers(players);
       setCurrentTurn(currentTurn);
       setTurnNumber(turnNumber);
       setMaxTurns(maxTurns);
@@ -132,10 +133,11 @@ export const useSocketListeners = () => {
       setIsReconnecting(false);
       if (typeof treasury === "number") setTreasury(treasury);
       if (typeof qli === "number") setQli(qli);
+      if (spaces) setBoardSpaces(spaces);
+      if (boardSize) setBoardSize(boardSize);
+      if (playerStyles) setPlayerStyles(playerStyles);
 
-      const currentPlayer = normalizedPlayers.find(
-        (p: any) => p.ID === playerId,
-      );
+      const currentPlayer = players.find((p: any) => p.id === playerId);
       if (currentPlayer) {
         setPosition(currentPlayer.position);
         setIsHost(currentPlayer.isHost);
@@ -164,26 +166,16 @@ export const useSocketListeners = () => {
       window.location.href = "/";
     };
 
-    const handleConnect = () => {
-      const lastRoom = getLastRoom();
-      const storedName = localStorage.getItem("playerName");
-      const storedId = localStorage.getItem("playerId");
-
-      if (lastRoom && storedName && storedId) {
-        socket.emit("rejoin-game", {
-          roomCode: lastRoom,
-          playerId: storedId,
-          name: storedName,
-        });
-      }
-    };
-
     const handleDisconnect = () => {
       setIsReconnecting(true);
+    };
+    const handleConnect = () => {
+      setIsReconnecting(false);
     };
 
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
+    socket.on("board-config", handleBoardConfig);
     socket.on("game-started", handleGameStarted);
     socket.on("dice-rolled", handleDiceRolled);
     socket.on("turn-changed", handleTurnChanged);
@@ -198,6 +190,7 @@ export const useSocketListeners = () => {
     return () => {
       socket.off("connect", handleConnect);
       socket.off("disconnect", handleDisconnect);
+      socket.off("board-config", handleBoardConfig);
       socket.off("game-started", handleGameStarted);
       socket.off("dice-rolled", handleDiceRolled);
       socket.off("turn-changed", handleTurnChanged);
@@ -210,7 +203,7 @@ export const useSocketListeners = () => {
       socket.off("card-drawn", handleCardDrawn);
     };
   }, [
-    ID,
+    id,
     roomCode,
     setPlayers,
     setCurrentTurn,
@@ -224,5 +217,8 @@ export const useSocketListeners = () => {
     setRoomCode,
     setTreasury,
     setQli,
+    setBoardSpaces,
+    setBoardSize,
+    setPlayerStyles,
   ]);
 };

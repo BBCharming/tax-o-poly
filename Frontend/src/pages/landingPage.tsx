@@ -7,13 +7,13 @@ import { setLastRoom, setPlayerName } from "../services/utils";
 
 function LandingPage() {
   const navigate = useNavigate();
-  const { name, setName, setIsHost, setID } = usePlayer();
+  const { name, setName, setIsHost, setId } = usePlayer();
   const { setRoomCode, setPlayers } = useGame();
 
   useEffect(() => {
     socket.on("game-created", ({ roomCode, players, playerId }) => {
       setPlayers(players);
-      setID(playerId);
+      setId(playerId);
       setRoomCode(roomCode);
       setLastRoom(roomCode);
       setPlayerName(name);
@@ -28,7 +28,7 @@ function LandingPage() {
       socket.off("game-created");
       socket.off("error");
     };
-  }, [navigate, setPlayers, setID, setRoomCode, name]);
+  }, [navigate, setPlayers, setId, setRoomCode, name]);
 
   const handleHost = () => {
     if (!name.trim()) {

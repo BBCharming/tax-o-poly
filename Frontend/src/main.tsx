@@ -13,20 +13,21 @@ import { getPlayerName, getLastRoom } from "./services/utils.ts";
 import { rejoinGame } from "./services/socket.ts";
 
 function Root() {
-  const { initializeFromStorage, ID } = usePlayer();
+  const { initializeFromStorage, id } = usePlayer();
   useSocketListeners();
 
   useEffect(() => {
     initializeFromStorage();
   }, [initializeFromStorage]);
+
   useEffect(() => {
     const lastRoom = getLastRoom();
     const storedName = getPlayerName();
 
-    if (lastRoom && storedName && ID) {
-      rejoinGame(lastRoom, ID, storedName);
+    if (lastRoom && storedName && id) {
+      rejoinGame(lastRoom, id, storedName);
     }
-  }, [ID]);
+  }, [id]);
 
   return (
     <>

@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGame, usePlayer } from "../services/states";
-import { playerColors, playerTokens } from "../services/playerConfigs";
 import { socket, rollDice, leaveGame, declareTax } from "../services/socket";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
+
+//This is how long the public good/civic risk banner must stay on the page
+const CARD_MODAL_MIN_SECONDS = 6;
 
 export default function GameBoard() {
   const navigate = useNavigate();
@@ -21,9 +23,11 @@ export default function GameBoard() {
     maxTurns,
     treasury,
     qli,
+    boardSpaces,
+    playerStyles,
   } = useGame();
-  const { ID, position, setPosition, setIsHost, setName } = usePlayer();
-  const playerRound = players.find((p) => p.ID === ID)?.turnNumber ?? 1;
+  const { id: myId, position, setPosition, setIsHost, setName } = usePlayer();
+  const playerRound = players.find((p) => p.id === myId)?.turnNumber ?? 1;
   const [isRolling, setIsRolling] = useState(false);
   const [movingPlayer, setMovingPlayer] = useState<string | null>(null);
   const [gameOver, setGameOver] = useState<{
@@ -41,57 +45,8 @@ export default function GameBoard() {
     type: "CivicRisk" | "PublicGood";
     description: string;
   } | null>(null);
-
-  const corners = {
-    topLeft: { name: "GO", color: "gray" },
-    topRight: { name: "Free Parking", color: "gray" },
-    bottomLeft: { name: "Tax Office", color: "gray" },
-    bottomRight: { name: "Audit Lock!", color: "red" },
-  };
-
-  const topSpaces = [
-    { name: "Airport", price: "K260", color: "blue" },
-    { name: "Civic Risk", color: "orange" },
-    { name: "Court", price: "K220", color: "teal" },
-    { name: "Fire Station", price: "K200", color: "teal" },
-    { name: "Income Tax", color: "gray" },
-    { name: "University", price: "K180", color: "green" },
-    { name: "Public Good", color: "orange" },
-    { name: "Stadium", price: "K160", color: "green" },
-  ];
-
-  const rightSpaces = [
-    { name: "Clinic", price: "K120", color: "blue" },
-    { name: "School", price: "K160", color: "green" },
-    { name: "Civic Risk", color: "orange" },
-    { name: "Mine", price: "K200", color: "brown" },
-    { name: "Factory", price: "K180", color: "brown" },
-    { name: "Public Good", color: "orange" },
-    { name: "Income Tax", color: "gray" },
-    { name: "Port", price: "K240", color: "blue" },
-  ];
-
-  const bottomSpaces = [
-    { name: "Sewer", price: "K100", color: "teal" },
-    { name: "Park", price: "K140", color: "green" },
-    { name: "Civic Risk", color: "orange" },
-    { name: "Market", price: "K180", color: "green" },
-    { name: "Library", price: "K160", color: "green" },
-    { name: "Income Tax", color: "gray" },
-    { name: "Public Good", color: "orange" },
-    { name: "Bridge", price: "K220", color: "blue" },
-  ];
-
-  const leftSpaces = [
-    { name: "Police", price: "K120", color: "teal" },
-    { name: "Water", price: "K175", color: "teal" },
-    { name: "Public Good", color: "orange" },
-    { name: "Income Tax", color: "gray" },
-    { name: "School", price: "K150", color: "green" },
-    { name: "Civic Risk", color: "orange" },
-    { name: "Hospital", price: "K200", color: "teal" },
-    { name: "Free Pass", color: "gray" },
-  ];
+  const [cardCountdown, setCardCountdown] = useState(0);
+  const cardCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Get space colors
   const getSpaceColors = (color: string) => {
@@ -178,21 +133,15 @@ export default function GameBoard() {
       setGameOver({ winner, message });
     };
 
-    // Only the player who landed on Income Tax receives this (server
-    // targets it with io.to(player.socketId)), so no playerId check needed.
-    // Broadcast to the room, but only the player who actually landed
-    // on Income Tax should see the modal — everyone else just needs to
-    // silently know a declaration is pending (handled by disabling the
-    // roll button for the whole room via awaitingDeclaration below).
     const handleTaxPrompt = ({ playerId }: any) => {
-      if (playerId === ID) {
+      if (playerId === myId) {
         setShowTaxModal(true);
       }
       setAwaitingDeclaration(true);
     };
 
     const handleTaxResolved = ({ playerId, audited, penalty }: any) => {
-      if (playerId === ID) {
+      if (playerId === myId) {
         setTaxResult({ audited, penalty });
         setShowTaxModal(false);
         setTimeout(() => setTaxResult(null), 3500);
@@ -203,7 +152,7 @@ export default function GameBoard() {
 
     const handleCardDrawn = ({ type, description }: any) => {
       setCardBanner({ type, description });
-      setTimeout(() => setCardBanner(null), 4000);
+      setCardCountdown(CARD_MODAL_MIN_SECONDS);
     };
 
     socket.on("dice-rolled", handleDiceRolled);
@@ -221,23 +170,49 @@ export default function GameBoard() {
       socket.off("tax-resolved", handleTaxResolved);
       socket.off("card-drawn", handleCardDrawn);
     };
-  }, [ID]);
+  }, [myId]);
+
+  useEffect(() => {
+    if (!cardBanner) {
+      if (cardCountdownRef.current) {
+        clearInterval(cardCountdownRef.current);
+        cardCountdownRef.current = null;
+      }
+      return;
+    }
+
+    cardCountdownRef.current = setInterval(() => {
+      setCardCountdown((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+
+    return () => {
+      if (cardCountdownRef.current) {
+        clearInterval(cardCountdownRef.current);
+        cardCountdownRef.current = null;
+      }
+    };
+  }, [cardBanner]);
+
+  const handleDismissCard = () => {
+    if (cardCountdown > 0) return;
+    setCardBanner(null);
+  };
 
   const handleRollDice = () => {
     if (
       isRolling ||
-      currentTurn !== ID ||
+      currentTurn !== myId ||
       !isGameStarted ||
       gameOver ||
       awaitingDeclaration
     )
       return;
     setIsRolling(true);
-    rollDice(roomCode, ID);
+    rollDice(roomCode, myId);
   };
 
   const handleDeclare = (choice: "full" | "under") => {
-    declareTax(roomCode, ID, choice);
+    declareTax(roomCode, myId, choice);
   };
 
   const handleQuitGame: any = () => {
@@ -273,10 +248,15 @@ export default function GameBoard() {
   };
 
   const getPlayerStyle = (player: any) => {
-    const tokenIndex = playerTokens.indexOf(player.token);
-    const colorIndex = tokenIndex >= 0 ? tokenIndex : 0;
-    const color = playerColors[colorIndex % playerColors.length];
-    return { ...color, token: player.token || playerTokens[0] };
+    return (
+      player.style ||
+      playerStyles[0] || {
+        token: "🎲",
+        bg: "bg-gray-500",
+        border: "border-gray-600",
+        text: "text-gray-500",
+      }
+    );
   };
 
   const renderPlayerTokens = (spaceIndex: number) => {
@@ -284,12 +264,12 @@ export default function GameBoard() {
 
     return playersOnSpace.map((player, idx) => {
       const style = getPlayerStyle(player);
-      const isCurrentPlayer = player.ID === ID;
-      const isMoving = movingPlayer === player.ID;
+      const isCurrentPlayer = player.id === myId;
+      const isMoving = movingPlayer === player.id;
 
       return (
         <div
-          key={player.ID}
+          key={player.id}
           className={`absolute ${style.bg} ${style.border} border-2 rounded-full w-6 h-6 flex items-center justify-center text-white text-xs font-bold transition-all duration-500 ease-in-out`}
           style={{
             bottom: `${idx * 18 + 2}px`,
@@ -365,7 +345,28 @@ export default function GameBoard() {
   };
 
   const currentPlayerName =
-    players.find((p) => (p.ID || p.id) === currentTurn)?.name || "Waiting...";
+    players.find((p) => p.id === currentTurn)?.name || "Waiting...";
+
+  if (boardSpaces.length < 36) {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-[#F7F1E6] via-[#EFE7D8] to-[#E4EEF3] flex items-center justify-center">
+        <p className="text-[rgb(47,111,159)] text-lg font-semibold">
+          Loading board...
+        </p>
+      </div>
+    );
+  }
+
+  const corners = {
+    topLeft: boardSpaces[0],
+    topRight: boardSpaces[9],
+    bottomRight: boardSpaces[18],
+    bottomLeft: boardSpaces[27],
+  };
+  const topSpaces = boardSpaces.slice(1, 9);
+  const rightSpaces = boardSpaces.slice(10, 18);
+  const bottomSpaces = boardSpaces.slice(19, 27).slice().reverse();
+  const leftSpaces = boardSpaces.slice(28, 36).slice().reverse();
 
   if (gameOver) {
     return (
@@ -461,19 +462,6 @@ export default function GameBoard() {
           {/* Game Board */}
           <div className="flex-1 bg-[rgb(250,246,237)] border-8 border-[rgb(51,49,44)] shadow-2xl">
             <div className="w-full flex flex-col">
-              {/*
-                Board ring layout (36 spaces total, matches server BOARD_SIZE):
-                0            = topLeft corner (GO)
-                1-8          = topSpaces, left -> right
-                9            = topRight corner (Free Parking)
-                10-17        = rightSpaces, top -> bottom
-                18           = bottomRight corner (Audit Lock!)
-                19-26        = bottomSpaces, right -> left (26-idx)
-                27           = bottomLeft corner (Tax Office)
-                28-35        = leftSpaces, bottom -> top (35-idx)
-                (35 -> wraps back to 0)
-              */}
-
               {/* Top Row */}
               <div className="flex w-full">
                 {renderSpace(corners.topLeft, 0, true)}
@@ -530,12 +518,12 @@ export default function GameBoard() {
                       <div className="space-y-2 max-h-40 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-200">
                         {players.map((player) => {
                           const style = getPlayerStyle(player);
-                          const isCurrentPlayer = player.ID === ID;
-                          const isTurn = player.ID === currentTurn;
+                          const isCurrentPlayer = player.id === myId;
+                          const isTurn = player.id === currentTurn;
 
                           return (
                             <div
-                              key={player.ID}
+                              key={player.id}
                               className={`flex items-center justify-between px-4 py-2 rounded-lg ${
                                 isCurrentPlayer
                                   ? "bg-blue-50 border-2 border-blue-300"
@@ -552,10 +540,7 @@ export default function GameBoard() {
                                   {player.name}
                                   {isCurrentPlayer && " (You)"}
                                   {player.isHost && " 👑"}
-                                  {/* Compliance visibility: makes each player's tax
-                                      history visible to the whole group, since social
-                                      visibility (not just individual penalties) is what
-                                      sustains cooperation in public-goods settings. */}
+
                                   {(player.auditedCount ?? 0) > 0 ? (
                                     <span
                                       className="ml-2 text-xs text-[rgb(140,43,43)]"
@@ -596,14 +581,14 @@ export default function GameBoard() {
                           onClick={handleRollDice}
                           disabled={
                             isRolling ||
-                            currentTurn !== ID ||
+                            currentTurn !== myId ||
                             !isGameStarted ||
                             gameOver !== null ||
                             awaitingDeclaration
                           }
                           className={`bg-[rgb(47,111,159)] hover:bg-[rgb(37,90,130)] text-white font-bold px-8 py-3 rounded-lg shadow-lg transition-colors ${
                             isRolling ||
-                            currentTurn !== ID ||
+                            currentTurn !== myId ||
                             !isGameStarted ||
                             gameOver !== null ||
                             awaitingDeclaration
@@ -678,7 +663,7 @@ export default function GameBoard() {
         </div>
       </div>
 
-      {/* Tax Declaration Modal — only the player who landed on Income Tax sees this */}
+      {/* Tax Declaration Modal*/}
       {showTaxModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl border-2 border-[rgb(191,216,232)]">
@@ -709,7 +694,7 @@ export default function GameBoard() {
         </div>
       )}
 
-      {/* Tax outcome banner — shown briefly after resolution */}
+      {/* Tax outcome banner */}
       {taxResult && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50">
           <div
@@ -726,22 +711,42 @@ export default function GameBoard() {
         </div>
       )}
 
-      {/* Civic Risk / Public Good card banner */}
       {cardBanner && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div
-            className={`px-6 py-4 rounded-xl shadow-2xl border-2 font-semibold text-center max-w-md ${
+            className={`bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl border-2 ${
               cardBanner.type === "CivicRisk"
-                ? "bg-white border-[rgb(140,43,43)] text-[rgb(140,43,43)]"
-                : "bg-white border-[rgb(47,111,159)] text-[rgb(47,111,159)]"
+                ? "border-[rgb(140,43,43)]"
+                : "border-[rgb(47,111,159)]"
             }`}
           >
-            {cardBanner.type === "CivicRisk"
-              ? "⚠️ Civic Risk"
-              : "🎁 Public Good"}
-            <p className="text-sm font-normal text-[rgb(51,49,44)] mt-1">
+            <h2
+              className={`text-2xl font-bold text-center mb-4 ${
+                cardBanner.type === "CivicRisk"
+                  ? "text-[rgb(140,43,43)]"
+                  : "text-[rgb(47,111,159)]"
+              }`}
+            >
+              {cardBanner.type === "CivicRisk"
+                ? "⚠️ Civic Risk"
+                : "🎁 Public Good"}
+            </h2>
+            <p className="text-[rgb(51,49,44)] text-center mb-6">
               {cardBanner.description}
             </p>
+            <button
+              onClick={handleDismissCard}
+              disabled={cardCountdown > 0}
+              className={`w-full font-bold py-3 rounded-lg transition-colors ${
+                cardCountdown > 0
+                  ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                  : cardBanner.type === "CivicRisk"
+                    ? "bg-[rgb(140,43,43)] hover:bg-[rgb(120,35,35)] text-white cursor-pointer"
+                    : "bg-[rgb(47,111,159)] hover:bg-[rgb(37,90,130)] text-white cursor-pointer"
+              }`}
+            >
+              {cardCountdown > 0 ? `Got it (${cardCountdown}s)` : "Got it"}
+            </button>
           </div>
         </div>
       )}

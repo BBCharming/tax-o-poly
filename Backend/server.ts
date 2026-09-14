@@ -11,37 +11,105 @@ const io = new Server(server, {
   },
 });
 
-const PLAYER_TOKENS = ["🐻", "🚀", "🐱", "🐶", "🤖", "🦁"];
-const PLAYER_COLORS = [
-  "bg-red-500",
-  "bg-blue-500",
-  "bg-green-500",
-  "bg-yellow-500",
-  "bg-purple-500",
-  "bg-pink-500",
-];
 const BOARD_SIZE = 36;
 
-// ===================================================================
-// BOARD SPACE CONFIG
-// These indices MUST stay in sync with the space layout rendered in
-// Frontend/src/pages/mainBoard.tsx (topSpaces/rightSpaces/bottomSpaces/
-// leftSpaces + the idx-to-position formulas used there). If you ever
-// reorder a space in mainBoard.tsx, update the matching array here.
-// ===================================================================
-const INCOME_TAX_POSITIONS = [5, 16, 21, 32]; // one "Income Tax" per side, same density as the other card tiles
-const CIVIC_RISK_POSITIONS = [2, 12, 24, 30]; // one "Civic Risk" per side
-const PUBLIC_GOOD_POSITIONS = [7, 15, 20, 33]; // one "Public Good" per side
+const PLAYER_STYLES = [
+  {
+    token: "🐻",
+    bg: "bg-red-500",
+    border: "border-red-600",
+    text: "text-red-500",
+  },
+  {
+    token: "🚀",
+    bg: "bg-blue-500",
+    border: "border-blue-600",
+    text: "text-blue-500",
+  },
+  {
+    token: "🐱",
+    bg: "bg-green-500",
+    border: "border-green-600",
+    text: "text-green-500",
+  },
+  {
+    token: "🐶",
+    bg: "bg-yellow-500",
+    border: "border-yellow-600",
+    text: "text-yellow-500",
+  },
+  {
+    token: "🤖",
+    bg: "bg-purple-500",
+    border: "border-purple-600",
+    text: "text-purple-500",
+  },
+  {
+    token: "🦁",
+    bg: "bg-pink-500",
+    border: "border-pink-600",
+    text: "text-pink-500",
+  },
+];
 
-// ===================================================================
+// BOARD LAYOUT
+const BOARD_SPACES = [
+  /* 0  */ { name: "GO", color: "gray", kind: "corner" },
+  /* 1  */ { name: "Airport", price: "K260", color: "blue" },
+  /* 2  */ { name: "Civic Risk", color: "orange", kind: "civic-risk" },
+  /* 3  */ { name: "Court", price: "K220", color: "teal" },
+  /* 4  */ { name: "Fire Station", price: "K200", color: "teal" },
+  /* 5  */ { name: "Income Tax", color: "gray", kind: "income-tax" },
+  /* 6  */ { name: "University", price: "K180", color: "green" },
+  /* 7  */ { name: "Public Good", color: "orange", kind: "public-good" },
+  /* 8  */ { name: "Stadium", price: "K160", color: "green" },
+  /* 9  */ { name: "Free Parking", color: "gray", kind: "corner" },
+  /* 10 */ { name: "Clinic", price: "K120", color: "blue" },
+  /* 11 */ { name: "School", price: "K160", color: "green" },
+  /* 12 */ { name: "Civic Risk", color: "orange", kind: "civic-risk" },
+  /* 13 */ { name: "Mine", price: "K200", color: "brown" },
+  /* 14 */ { name: "Factory", price: "K180", color: "brown" },
+  /* 15 */ { name: "Public Good", color: "orange", kind: "public-good" },
+  /* 16 */ { name: "Income Tax", color: "gray", kind: "income-tax" },
+  /* 17 */ { name: "Port", price: "K240", color: "blue" },
+  /* 18 */ { name: "Audit Lock!", color: "red", kind: "corner" },
+  /* 19 */ { name: "Bridge", price: "K220", color: "blue" },
+  /* 20 */ { name: "Public Good", color: "orange", kind: "public-good" },
+  /* 21 */ { name: "Income Tax", color: "gray", kind: "income-tax" },
+  /* 22 */ { name: "Library", price: "K160", color: "green" },
+  /* 23 */ { name: "Market", price: "K180", color: "green" },
+  /* 24 */ { name: "Civic Risk", color: "orange", kind: "civic-risk" },
+  /* 25 */ { name: "Park", price: "K140", color: "green" },
+  /* 26 */ { name: "Sewer", price: "K100", color: "teal" },
+  /* 27 */ { name: "Tax Office", color: "gray", kind: "corner" },
+  /* 28 */ { name: "Free Pass", color: "gray" },
+  /* 29 */ { name: "Hospital", price: "K200", color: "teal" },
+  /* 30 */ { name: "Civic Risk", color: "orange", kind: "civic-risk" },
+  /* 31 */ { name: "School", price: "K150", color: "green" },
+  /* 32 */ { name: "Income Tax", color: "gray", kind: "income-tax" },
+  /* 33 */ { name: "Public Good", color: "orange", kind: "public-good" },
+  /* 34 */ { name: "Water", price: "K175", color: "teal" },
+  /* 35 */ { name: "Police", price: "K120", color: "teal" },
+];
+
+if (BOARD_SPACES.length !== BOARD_SIZE) {
+  throw new Error(
+    `BOARD_SPACES has ${BOARD_SPACES.length} entries but BOARD_SIZE is ${BOARD_SIZE}`,
+  );
+}
+
+const positionsOfKind = (kind: string) =>
+  BOARD_SPACES.reduce<number[]>((acc, space, index) => {
+    if (space.kind === kind) acc.push(index);
+    return acc;
+  }, []);
+
+const INCOME_TAX_POSITIONS = positionsOfKind("income-tax");
+const CIVIC_RISK_POSITIONS = positionsOfKind("civic-risk");
+const PUBLIC_GOOD_POSITIONS = positionsOfKind("public-good");
+
 // QUALITY OF LIFE INDEX (QLI)
-// A simple, transparent, linear measure of collective fiscal health:
-// it moves with the shared treasury relative to where the game started.
-// This is deliberately simple (see report note) — it's the number that
-// should visibly suffer when players collectively under-contribute,
-// even if no single individual is penalised for it.
-// ===================================================================
-const BASELINE_TREASURY = 4250; // starting treasury == the game's "50% QLI" reference point
+const BASELINE_TREASURY = 4250;
 const QLI_SENSITIVITY = 40; // K40 of treasury change moves QLI by 1 point
 
 function computeQLI(treasury: number): number {
@@ -55,18 +123,12 @@ function computeQLI(treasury: number): number {
 // Fairness rule: declaring in full should not be a "sucker's payoff."
 // Expected cost of under-declaring = UNDER_TAX_AMOUNT + AUDIT_CHANCE * AUDIT_PENALTY
 //   = 40 + 0.35 * 180 = 103
-// ...which is now >= FULL_TAX_AMOUNT (100). On average, evasion does not
-// pay — but individual players can still get lucky (or unlucky), which
-// preserves genuine risk/strategy rather than making the choice a dead
-// giveaway. This mirrors the "compliance puzzle" in the literature review:
-// real-world compliance is higher than pure audit-odds math would predict,
-// because evasion isn't actually the good bet it might look like at a glance.
 // ===================================================================
-const FULL_TAX_AMOUNT = 100; // paid to treasury when declaring in full — no risk
-const UNDER_TAX_AMOUNT = 40; // paid when under-declaring — smaller contribution
-const AUDIT_CHANCE = 0.35; // 35% chance an under-declaration gets audited
-const AUDIT_PENALTY = 180; // extra deduction if audited
-const AUDIT_SKIP_TURNS = 1; // turns skipped as a consequence of being audited
+const FULL_TAX_AMOUNT = 100;
+const UNDER_TAX_AMOUNT = 40;
+const AUDIT_CHANCE = 0.35;
+const AUDIT_PENALTY = 180;
+const AUDIT_SKIP_TURNS = 1;
 
 // ===================================================================
 // CARD DECKS
@@ -74,8 +136,7 @@ const AUDIT_SKIP_TURNS = 1; // turns skipped as a consequence of being audited
 // Every card has an explicit `scope` so the deduction/credit rule is
 // never implicit or guessed from which fields happen to be set:
 //   "self"      — affects only the player who landed on the space.
-//   "all"       — affects every player equally (a shared cost or a
-//                 shared dividend), independent of the treasury.
+//   "all"       — affects every player equally, independent of the treasury.
 //   "treasury"  — affects the shared Public Treasury directly, and
 //                 therefore the QLI, WITHOUT touching any individual
 //                 player's personal savings. No one "feels" it directly,
@@ -84,31 +145,69 @@ const AUDIT_SKIP_TURNS = 1; // turns skipped as a consequence of being audited
 //                 one person's compliance choice.
 // ===================================================================
 const CIVIC_RISK_CARDS = [
-  { description: "Under-reported rental income was flagged in a routine check. Pay a penalty.", scope: "self", amount: -80 },
-  { description: "Late VAT filing penalty issued.", scope: "self", amount: -50 },
-  { description: "Random compliance audit — you lose your next turn.", scope: "self", amount: 0, skipTurns: 1 },
-  { description: "A customs duty dispute is resolved against you.", scope: "self", amount: -60 },
-  { description: "An unpaid informal market levy results in a fine.", scope: "self", amount: -40 },
-  // Treasury-scoped: nobody's personal fault, but everyone's QLI feels it —
-  // models mismanagement/leakage of already-collected public funds
-  // (see Balaguer-Coll et al. on fiscal transparency in the lit review).
-  { description: "A procurement scandal is uncovered — public funds were misused.", scope: "treasury", amount: -300 },
+  {
+    description:
+      "Under-reported rental income was flagged in a routine check. Pay a penalty.",
+    scope: "self",
+    amount: -80,
+  },
+  {
+    description: "Late VAT filing penalty issued.",
+    scope: "self",
+    amount: -50,
+  },
+  {
+    description: "Random compliance audit — you lose your next turn.",
+    scope: "self",
+    amount: 0,
+    skipTurns: 1,
+  },
+  {
+    description: "A customs duty dispute is resolved against you.",
+    scope: "self",
+    amount: -60,
+  },
+  {
+    description: "An unpaid informal market levy results in a fine.",
+    scope: "self",
+    amount: -40,
+  },
+  {
+    description:
+      "A procurement scandal is uncovered — public funds were misused.",
+    scope: "treasury",
+    amount: -300,
+  },
 ];
 
 const PUBLIC_GOOD_CARDS = [
-  { description: "Resurfaced roads cut your transport costs.", scope: "self", amount: 30 },
-  { description: "The local school receives new textbooks.", scope: "self", amount: 0 },
-  // "all" scope: a shared levy or shared dividend, applied to every
-  // player identically regardless of who drew the card. Real-world
-  // analogues: Zambia's NHIMA health-insurance levy (a small compulsory
-  // contribution from everyone that funds care for everyone), or a
-  // universal service subsidy (a public bus/utility rollout that lowers
-  // costs for the whole community, not just the person who triggered it).
-  { description: "National Health Insurance levy — every player contributes K15 to a shared clinic fund.", scope: "all", amount: -15 },
-  { description: "A universal transport subsidy rolls out — every player saves K10.", scope: "all", amount: 10 },
-  // Treasury-scoped positive: efficient collection, independent of any
-  // one player's action, raises the shared pool (and QLI) directly.
-  { description: "Efficient tax collection funds a new public library.", scope: "treasury", amount: 120 },
+  {
+    description: "Resurfaced roads cut your transport costs.",
+    scope: "self",
+    amount: 30,
+  },
+  {
+    description: "The local school receives new textbooks.",
+    scope: "self",
+    amount: 0,
+  },
+  {
+    description:
+      "National Health Insurance levy — every player contributes K15 to a shared clinic fund.",
+    scope: "all",
+    amount: -15,
+  },
+  {
+    description:
+      "A universal transport subsidy rolls out — every player saves K10.",
+    scope: "all",
+    amount: 10,
+  },
+  {
+    description: "Efficient tax collection funds a new public library.",
+    scope: "treasury",
+    amount: 120,
+  },
 ];
 
 function resolveCardEffect(game: any, player: any, card: any) {
@@ -127,13 +226,11 @@ function resolveCardEffect(game: any, player: any, card: any) {
 const games = new Map();
 
 const findPlayerIndex = (players: any[], playerId: string) =>
-  players.findIndex((p) => p.ID === playerId);
+  players.findIndex((p) => p.id === playerId);
 
 const findPlayerBySocketId = (players: any[], socketId: string) =>
   players.findIndex((p) => p.socketId === socketId);
 
-// Ends the current player's turn: checks for game-over, otherwise advances
-// to the next player, skipping anyone still serving an audit-penalty skip.
 function checkGameOverAndAdvance(
   roomCode: string,
   game: any,
@@ -163,12 +260,18 @@ function checkGameOverAndAdvance(
     guard += 1;
   }
 
-  game.currentTurn = game.players[nextIndex].ID;
+  game.currentTurn = game.players[nextIndex].id;
   games.set(roomCode, game);
   io.to(roomCode).emit("turn-changed", { playerId: game.currentTurn });
 }
 
 io.on("connection", (socket: any) => {
+  socket.emit("board-config", {
+    boardSize: BOARD_SIZE,
+    spaces: BOARD_SPACES,
+    playerStyles: PLAYER_STYLES,
+  });
+
   socket.on(
     "create-game",
     ({
@@ -186,14 +289,12 @@ io.on("connection", (socket: any) => {
 
       const hostPlayer = {
         id: playerId,
-        ID: playerId,
         socketId: socket.id,
         name,
         isHost: true,
         position: 0,
         money: 1500,
-        token: PLAYER_TOKENS[0],
-        color: PLAYER_COLORS[0],
+        style: PLAYER_STYLES[0],
         turnNumber: 1,
         skipTurns: 0,
         underDeclareCount: 0,
@@ -256,14 +357,12 @@ io.on("connection", (socket: any) => {
       const playerIndex = game.players.length;
       const newPlayer = {
         id: playerId,
-        ID: playerId,
         socketId: socket.id,
         name,
         isHost: false,
         position: 0,
         money: 1500,
-        token: PLAYER_TOKENS[playerIndex % PLAYER_TOKENS.length],
-        color: PLAYER_COLORS[playerIndex % PLAYER_COLORS.length],
+        style: PLAYER_STYLES[playerIndex % PLAYER_STYLES.length],
         turnNumber: 1,
         skipTurns: 0,
         underDeclareCount: 0,
@@ -315,6 +414,9 @@ io.on("connection", (socket: any) => {
         maxTurns: game.maxTurns,
         treasury: game.treasury,
         qli: computeQLI(game.treasury),
+        spaces: BOARD_SPACES,
+        boardSize: BOARD_SIZE,
+        playerStyles: PLAYER_STYLES,
       });
 
       io.to(roomCode).emit("players-updated", game.players);
@@ -327,7 +429,7 @@ io.on("connection", (socket: any) => {
 
     game.isGameStarted = true;
     game.turnNumber = 1;
-    game.currentTurn = game.players[0].ID;
+    game.currentTurn = game.players[0].id;
 
     games.set(roomCode, game);
 
@@ -338,6 +440,9 @@ io.on("connection", (socket: any) => {
       maxTurns: game.maxTurns,
       treasury: game.treasury,
       qli: computeQLI(game.treasury),
+      spaces: BOARD_SPACES,
+      boardSize: BOARD_SIZE,
+      playerStyles: PLAYER_STYLES,
     });
   });
 
@@ -369,19 +474,11 @@ io.on("connection", (socket: any) => {
       playerTurnNumber: player.turnNumber,
     });
 
-    // Landed on Income Tax: pause here and wait for the player's own
-    // declare-tax choice before the turn advances. Broadcast to the whole
-    // room (same reliable pattern as card-drawn) and let each client filter
-    // by playerId — this avoids depending on player.socketId staying
-    // perfectly in sync with the live connection, which a private
-    // io.to(socketId) emit does not tolerate well after any reconnect.
     if (INCOME_TAX_POSITIONS.includes(newPosition)) {
       io.to(roomCode).emit("tax-prompt", { roomCode, playerId });
       return;
     }
 
-    // Landed on a Civic Risk or Public Good space: resolve a card
-    // immediately, then continue the turn as normal.
     if (
       CIVIC_RISK_POSITIONS.includes(newPosition) ||
       PUBLIC_GOOD_POSITIONS.includes(newPosition)
@@ -468,7 +565,7 @@ io.on("connection", (socket: any) => {
     if (playerIndex === -1) return;
 
     const wasHost = game.players[playerIndex].isHost;
-    const wasCurrentTurn = game.currentTurn === game.players[playerIndex].ID;
+    const wasCurrentTurn = game.currentTurn === game.players[playerIndex].id;
 
     game.players.splice(playerIndex, 1);
 
@@ -481,13 +578,13 @@ io.on("connection", (socket: any) => {
     if (wasHost) {
       game.players[0].isHost = true;
       io.to(roomCode).emit("host-left", {
-        newHost: game.players[0].ID,
+        newHost: game.players[0].id,
         newHostName: game.players[0].name,
       });
     }
 
     if (wasCurrentTurn) {
-      game.currentTurn = game.players[0].ID;
+      game.currentTurn = game.players[0].id;
       io.to(roomCode).emit("turn-changed", {
         playerId: game.currentTurn,
         turnNumber: game.turnNumber,

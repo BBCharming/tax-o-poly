@@ -8,12 +8,12 @@ import { setPlayerName, setLastRoom } from "../services/utils";
 function JoinPage() {
   const navigate = useNavigate();
   const { roomCode, setRoomCode, setPlayers } = useGame();
-  const { name, setID } = usePlayer();
+  const { name, setId } = usePlayer();
 
   useEffect(() => {
     socket.on("player-joined", ({ players, playerId }) => {
       setPlayers(players);
-      setID(playerId);
+      setId(playerId);
       setLastRoom(roomCode);
       setPlayerName(name);
       navigate("/lobby");
@@ -37,7 +37,7 @@ function JoinPage() {
       socket.off("game-full");
       socket.off("error");
     };
-  }, [navigate, setPlayers, setID, roomCode, name]);
+  }, [navigate, setPlayers, setId, roomCode, name]);
 
   const handleJoin = () => {
     if (!roomCode.trim()) {

@@ -6,12 +6,10 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
 const GameLobby = () => {
-  const { isHost, ID } = usePlayer();
+  const { isHost, id } = usePlayer();
   const { roomCode, players, isGameStarted } = useGame();
   const navigate = useNavigate();
 
-  // Only host-left stays local — it's page-specific behavior (toast + redirect to menu).
-  // game-started and players-updated are handled globally in useSocketListeners.
   useEffect(() => {
     socket.on("host-left", () => {
       toast.error("Host left the game. Returning to menu.");
@@ -23,8 +21,6 @@ const GameLobby = () => {
     };
   }, [navigate]);
 
-  // Navigate once the global store confirms the game started — not off the raw socket event.
-  // This guarantees currentTurn/players/turnNumber are already populated before GameBoard mounts.
   useEffect(() => {
     if (isGameStarted) {
       toast.success("Game is starting!");
@@ -75,7 +71,7 @@ const GameLobby = () => {
           <div className="space-y-3">
             {players.map((player, index) => (
               <div
-                key={player.ID}
+                key={player.id}
                 className="flex items-center gap-4 bg-white px-6 py-4 rounded-lg border-2 border-[#DCE7EE]"
               >
                 <div className="flex items-center justify-center w-10 h-10 bg-[#2F6F9F] rounded-full text-white font-bold text-lg">
@@ -89,7 +85,7 @@ const GameLobby = () => {
                         (Host)
                       </span>
                     )}
-                    {player.ID === ID && !player.isHost && (
+                    {player.id === id && !player.isHost && (
                       <span className="ml-2 text-sm text-[#3F7DA6] font-normal">
                         (You)
                       </span>
